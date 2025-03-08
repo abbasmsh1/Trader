@@ -1,7 +1,19 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Literal
 import pandas as pd
+
+# Define trading actions as constants
+TradingAction = Literal[
+    'STRONG_BUY',    # Very confident buy signal
+    'BUY',           # Standard buy signal
+    'SCALE_IN',      # Gradually increase position
+    'WATCH',         # Monitor for opportunities
+    'HOLD',          # No action needed
+    'SCALE_OUT',     # Gradually decrease position
+    'SELL',          # Standard sell signal
+    'STRONG_SELL'    # Very confident sell signal
+]
 
 class BaseAgent(ABC):
     def __init__(self, name: str, personality: str, risk_tolerance: float = 0.5, timeframe: str = '1h'):
@@ -22,6 +34,18 @@ class BaseAgent(ABC):
         self.trading_history: List[Dict] = []
         self.strategy_preferences: Dict[str, float] = {}
         self.market_beliefs: Dict[str, str] = {}
+        
+        # Action thresholds for different signal types
+        self.action_thresholds = {
+            'STRONG_BUY': 0.9,    # Very high confidence threshold
+            'BUY': 0.7,           # Standard buy threshold
+            'SCALE_IN': 0.6,      # Gradual position increase threshold
+            'WATCH': 0.4,         # Monitoring threshold
+            'HOLD': 0.0,          # Default action
+            'SCALE_OUT': 0.6,     # Gradual position decrease threshold
+            'SELL': 0.7,          # Standard sell threshold
+            'STRONG_SELL': 0.9    # Very high confidence for selling
+        }
         
     @abstractmethod
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
@@ -49,9 +73,45 @@ class BaseAgent(ABC):
         """
         pass
     
+    def determine_action(self, confidence: float, trend_direction: int) -> TradingAction:
+        """
+        Determine the appropriate trading action based on confidence and trend.
+        
+        Args:
+            confidence (float): Signal confidence level (0 to 1)
+            trend_direction (int): 1 for uptrend, -1 for downtrend
+            
+        Returns:
+            TradingAction: The determined trading action
+        """
+        if trend_direction > 0:  # Uptrend
+            if confidence >= self.action_thresholds['STRONG_BUY']:
+                return 'STRONG_BUY'
+            elif confidence >= self.action_thresholds['BUY']:
+                return 'BUY'
+            elif confidence >= self.action_thresholds['SCALE_IN']:
+                return 'SCALE_IN'
+            elif confidence >= self.action_thresholds['WATCH']:
+                return 'WATCH'
+            else:
+                return 'HOLD'
+        elif trend_direction < 0:  # Downtrend
+            if confidence >= self.action_thresholds['STRONG_SELL']:
+                return 'STRONG_SELL'
+            elif confidence >= self.action_thresholds['SELL']:
+                return 'SELL'
+            elif confidence >= self.action_thresholds['SCALE_OUT']:
+                return 'SCALE_OUT'
+            elif confidence >= self.action_thresholds['WATCH']:
+                return 'WATCH'
+            else:
+                return 'HOLD'
+        else:  # No clear trend
+            return 'WATCH'
+    
     def calculate_position_size(self, signal: Dict, available_capital: float) -> float:
         """
-        Calculate the position size based on risk tolerance and signal confidence.
+        Calculate the position size based on risk tolerance, signal confidence, and action type.
         
         Args:
             signal (Dict): Trading signal
@@ -61,7 +121,22 @@ class BaseAgent(ABC):
             float: Recommended position size
         """
         confidence = signal.get('confidence', 0.5)
-        risk_adjusted_size = available_capital * self.risk_tolerance * confidence
+        action = signal.get('action', 'HOLD')
+        
+        # Adjust position size based on action type
+        action_multipliers = {
+            'STRONG_BUY': 1.0,
+            'BUY': 0.8,
+            'SCALE_IN': 0.4,
+            'WATCH': 0.0,
+            'HOLD': 0.0,
+            'SCALE_OUT': 0.4,
+            'SELL': 0.8,
+            'STRONG_SELL': 1.0
+        }
+        
+        action_multiplier = action_multipliers.get(action, 0.0)
+        risk_adjusted_size = available_capital * self.risk_tolerance * confidence * action_multiplier
         return risk_adjusted_size
     
     def update_portfolio(self, trade: Dict):

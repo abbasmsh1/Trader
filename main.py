@@ -4,6 +4,8 @@ import pandas as pd
 from datetime import datetime
 import time
 from data.market_data import MarketDataFetcher
+from agents.value_investor import ValueInvestor
+from agents.tech_disruptor import TechDisruptor
 from agents.trend_follower import TrendFollower
 import dash
 from dash import dcc, html
@@ -20,34 +22,22 @@ pio.templates.default = "plotly_dark"
 class TradingSystem:
     def __init__(self, symbols: List[str] = None):
         """
-        Initialize the trading system.
-        
-        Args:
-            symbols (List[str]): List of trading pairs to monitor
+        Initialize the trading system with personality-based agents.
         """
         self.data_fetcher = MarketDataFetcher()
         self.symbols = symbols or DEFAULT_SYMBOLS
         
-        # Initialize trading agents
+        # Initialize trading agents with different personalities
         self.agents = [
-            TrendFollower(name="Conservative Trend Follower", risk_tolerance=0.3),
-            TrendFollower(name="Moderate Trend Follower", risk_tolerance=0.6),
-            TrendFollower(name="Aggressive Trend Follower", risk_tolerance=0.8)
+            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
+            TechDisruptor(name="Elon Musk AI", timeframe='1h'),
+            TrendFollower(name="Technical Trader", risk_tolerance=0.5, timeframe='4h')
         ]
         
         self.signals_history = []
         
     def analyze_market(self, symbol: str) -> List[Dict]:
-        """
-        Analyze market data using all agents.
-        
-        Args:
-            symbol (str): Trading pair symbol
-            
-        Returns:
-            List[Dict]: List of signals from all agents
-        """
-        # Fetch market data
+        """Analyze market data using all agents."""
         market_data = self.data_fetcher.get_historical_data(symbol)
         if market_data.empty:
             return []
@@ -58,11 +48,16 @@ class TradingSystem:
             analysis = agent.analyze_market(market_data)
             signal = agent.generate_signal(analysis)
             
+            # Add agent personality info to signal
+            personality_traits = agent.get_personality_traits()
             signals.append({
                 'agent': agent.name,
+                'personality': personality_traits['personality'],
                 'symbol': symbol,
                 'signal': signal,
-                'risk_tolerance': agent.risk_tolerance
+                'risk_tolerance': agent.risk_tolerance,
+                'strategy': personality_traits['strategy_preferences'],
+                'market_view': personality_traits['market_beliefs']
             })
             
         return signals
@@ -482,7 +477,9 @@ def create_dashboard(trading_system: TradingSystem):
             html.Thead(html.Tr([
                 html.Th("Symbol"),
                 html.Th("Agent"),
+                html.Th("Personality"),
                 html.Th("Action"),
+                html.Th("Commentary"),
                 html.Th("Confidence"),
                 html.Th("Price")
             ])),
@@ -490,10 +487,17 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Tr([
                     html.Td(signal['symbol'].replace('/USDT', '')),
                     html.Td(signal['agent']),
+                    html.Td(signal['personality'][:30] + "..."),
                     html.Td(
                         html.Span(
                             signal['signal']['action'].upper(),
                             className=f"signal-{signal['signal']['action'].lower()}"
+                        )
+                    ),
+                    html.Td(
+                        html.Div(
+                            signal['signal'].get('commentary', ''),
+                            className='signal-commentary'
                         )
                     ),
                     html.Td(
@@ -904,6 +908,108 @@ def create_dashboard(trading_system: TradingSystem):
                 @keyframes spin {
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
+                }
+                
+                /* Personality-based styles */
+                .signal-commentary {
+                    font-style: italic;
+                    color: #a8b2c1;
+                    font-size: 0.9em;
+                }
+                
+                .agent-warren {
+                    color: #4CAF50;  /* Value investing green */
+                }
+                
+                .agent-elon {
+                    color: #2196F3;  /* Tech blue */
+                }
+                
+                .agent-technical {
+                    color: #FFC107;  /* Technical analysis gold */
+                }
+                
+                /* Enhanced signal table styles */
+                .signals-table th {
+                    font-weight: 600;
+                    color: #ffffff;
+                    background-color: #283442;
+                    padding: 15px 12px;
+                }
+                
+                .signals-table td {
+                    padding: 15px 12px;
+                    border-bottom: 1px solid #3d4c5e;
+                }
+                
+                .signals-table tr:hover {
+                    background-color: #2b3c4e;
+                }
+                
+                /* Personality tooltip */
+                .personality-tooltip {
+                    position: relative;
+                    display: inline-block;
+                }
+                
+                .personality-tooltip:hover .tooltip-text {
+                    visibility: visible;
+                    opacity: 1;
+                }
+                
+                .tooltip-text {
+                    visibility: hidden;
+                    opacity: 0;
+                    width: 200px;
+                    background-color: #283442;
+                    color: #ffffff;
+                    text-align: center;
+                    border-radius: 6px;
+                    padding: 10px;
+                    position: absolute;
+                    z-index: 1;
+                    bottom: 125%;
+                    left: 50%;
+                    margin-left: -100px;
+                    transition: opacity 0.3s;
+                    font-size: 0.9em;
+                    border: 1px solid #3d4c5e;
+                }
+                
+                /* Strategy badges */
+                .strategy-badge {
+                    display: inline-block;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    font-size: 0.8em;
+                    margin-right: 4px;
+                    margin-bottom: 4px;
+                }
+                
+                .strategy-value {
+                    background-color: rgba(76, 175, 80, 0.2);
+                    color: #4CAF50;
+                }
+                
+                .strategy-tech {
+                    background-color: rgba(33, 150, 243, 0.2);
+                    color: #2196F3;
+                }
+                
+                .strategy-trend {
+                    background-color: rgba(255, 193, 7, 0.2);
+                    color: #FFC107;
+                }
+                
+                /* Emoji animations */
+                @keyframes float {
+                    0% { transform: translateY(0px); }
+                    50% { transform: translateY(-5px); }
+                    100% { transform: translateY(0px); }
+                }
+                
+                .signal-commentary {
+                    animation: float 3s ease-in-out infinite;
                 }
             </style>
         </head>
