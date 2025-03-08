@@ -95,6 +95,17 @@ def create_dashboard(trading_system: TradingSystem):
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
     )
     
+    # Define theme colors
+    colors = {
+        'background': '#1a1a1a',  # Dark background
+        'text': '#ffffff',        # White text
+        'primary': '#2196F3',     # Blue primary color
+        'secondary': '#f50057',   # Pink secondary color
+        'success': '#4CAF50',     # Green success color
+        'warning': '#ff9800',     # Orange warning color
+        'error': '#f44336'        # Red error color
+    }
+    
     # Define colors for different actions
     action_colors = {
         'STRONG_BUY': '#00ff00',    # Bright green
