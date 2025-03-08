@@ -8,10 +8,11 @@ from agents.value_investor import ValueInvestor
 from agents.tech_disruptor import TechDisruptor
 from agents.trend_follower import TrendFollower
 import dash
-from dash import dcc, html
+from dash import dcc, html, callback_context
 from dash.dependencies import Input, Output, State
+from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
-from threading import Thread
+from threading import Thread, Lock
 import plotly.io as pio
 from config.settings import DEFAULT_SYMBOLS, SYSTEM_PARAMS, TIMEFRAMES
 import ta
@@ -29,55 +30,208 @@ class TradingSystem:
         
         # Initialize trading agents with different personalities
         self.agents = [
-            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
-            TechDisruptor(name="Elon Musk AI", timeframe='1h'),
-            TrendFollower(name="Technical Trader", risk_tolerance=0.5, timeframe='4h')
+            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),  # ValueInvestor doesn't accept risk_tolerance in __init__
+            TechDisruptor(name="Elon Musk AI", timeframe='1h'),  # TechDisruptor has fixed risk_tolerance
+            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h')  # TrendFollower accepts risk_tolerance
         ]
         
         self.signals_history = []
+        self.market_data_cache = {}
+        self.last_update = {}
+        self.auto_trading_enabled = True  # Enable auto-trading by default
         
-    def analyze_market(self, symbol: str) -> List[Dict]:
-        """Analyze market data using all agents."""
-        market_data = self.data_fetcher.get_historical_data(symbol)
-        if market_data.empty:
-            return []
+        # Thread safety
+        self.lock = Lock()
         
-        # Set the symbol name in the market data
-        market_data.name = symbol
+        # Make initial BTC purchase for all agents
+        self._make_initial_btc_purchase()
         
-        # Get current price
-        current_price = float(market_data['close'].iloc[-1])
-        
-        signals = []
-        current_prices = {symbol: current_price}
-        
+    def _make_initial_btc_purchase(self):
+        """Make an initial purchase of BTC for all agents."""
+        try:
+            # Get current BTC price
+            btc_data = self.get_market_data("BTC/USDT")
+            if btc_data.empty:
+                print("Could not get BTC price for initial purchase")
+                return
+                
+            btc_price = float(btc_data['close'].iloc[-1])
+            print(f"Making initial BTC purchase at ${btc_price:.2f}")
+            
+            # Each agent buys BTC with 80% of their initial balance
+            for agent in self.agents:
+                initial_usdt = agent.wallet.balance_usdt
+                purchase_amount = initial_usdt * 0.8  # Use 80% of initial balance
+                
+                success = agent.wallet.execute_buy("BTC/USDT", purchase_amount, btc_price)
+                if success:
+                    btc_amount = purchase_amount / btc_price
+                    print(f"🔄 {agent.name} made initial BTC purchase: {btc_amount:.8f} BTC (${purchase_amount:.2f})")
+                    
+                    # Add to signals history
+                    self.signals_history.append({
+                        'agent': agent.name,
+                        'personality': agent.get_personality_traits()['personality'],
+                        'symbol': "BTC/USDT",
+                        'signal': {'action': 'STRONG_BUY', 'confidence': 0.8, 'reason': 'Initial purchase to grow $20 to $100'},
+                        'risk_tolerance': agent.risk_tolerance,
+                        'strategy': agent.get_personality_traits()['strategy_preferences'],
+                        'market_view': agent.get_personality_traits()['market_beliefs'],
+                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC': btc_price}),
+                        'trade_executed': True,
+                        'timestamp': datetime.now().timestamp()
+                    })
+                else:
+                    print(f"❌ {agent.name} failed to make initial BTC purchase")
+                    
+            # Set more aggressive trading strategies for all agents
+            self._set_aggressive_strategies()
+                
+        except Exception as e:
+            print(f"Error making initial BTC purchase: {str(e)}")
+            
+    def _set_aggressive_strategies(self):
+        """Set more aggressive trading strategies for all agents to reach $100 goal faster."""
         for agent in self.agents:
-            # Get analysis and signal from each agent
-            analysis = agent.analyze_market(market_data)
-            signal = agent.generate_signal(analysis)
-            
-            # Execute trade based on signal
-            trade_executed = agent.execute_trade(symbol, signal, current_price)
-            
-            # Get wallet metrics
-            wallet_metrics = agent.get_wallet_metrics(current_prices)
-            
-            # Add agent personality info to signal
-            personality_traits = agent.get_personality_traits()
-            signals.append({
-                'agent': agent.name,
-                'personality': personality_traits['personality'],
-                'symbol': symbol,
-                'signal': signal,
-                'risk_tolerance': agent.risk_tolerance,
-                'strategy': personality_traits['strategy_preferences'],
-                'market_view': personality_traits['market_beliefs'],
-                'wallet_metrics': wallet_metrics,
-                'trade_executed': trade_executed
+            # Update strategy preferences to be more aggressive
+            agent.set_strategy_preferences({
+                'value_investing': 0.3,
+                'momentum_trading': 0.8,
+                'trend_following': 0.9,
+                'swing_trading': 0.7,
+                'scalping': 0.6
             })
             
-        return signals
+            # Update market beliefs to be more optimistic
+            agent.update_market_beliefs({
+                'market_trend': 'strongly_bullish',
+                'volatility_expectation': 'high',
+                'risk_assessment': 'opportunity'
+            })
+            
+            print(f"Set aggressive trading strategy for {agent.name}")
+        
+    def get_market_data(self, symbol: str) -> pd.DataFrame:
+        """Get market data with caching."""
+        try:
+            current_time = time.time()
+            cache_ttl = SYSTEM_PARAMS.get('cache_ttl', 60)  # 1 minute default TTL
+            
+            if (symbol in self.market_data_cache and 
+                symbol in self.last_update and 
+                current_time - self.last_update[symbol] < cache_ttl):
+                print(f"Using cached data for {symbol}")
+                return self.market_data_cache[symbol]
+            
+            print(f"Fetching new data for {symbol}")
+            with self.lock:  # Thread-safe data fetching
+                df = self.data_fetcher.get_historical_data(symbol)
+                if df.empty:
+                    print(f"Error: Empty dataframe received for {symbol}")
+                    return pd.DataFrame()
+                
+                print(f"Successfully fetched data for {symbol}: {len(df)} rows")
+                self.market_data_cache[symbol] = df
+                self.last_update[symbol] = current_time
+                return df
+        except Exception as e:
+            print(f"Error in get_market_data for {symbol}: {str(e)}")
+            return pd.DataFrame()
+            
+    def analyze_market(self, symbol: str) -> List[Dict]:
+        """Analyze market data using all agents with a focus on reaching $100 goal."""
+        try:
+            print(f"Starting market analysis for {symbol}")
+            market_data = self.get_market_data(symbol)
+            if market_data.empty:
+                print(f"No market data available for {symbol}")
+                return []
+            
+            market_data.name = symbol
+            current_price = float(market_data['close'].iloc[-1])
+            
+            # Create a dictionary of current prices for all crypto assets
+            base_currency = symbol.split('/')[0]  # e.g., 'BTC' from 'BTC/USDT'
+            current_prices = {base_currency: current_price}
+            
+            # Add prices for other symbols in the portfolio
+            for other_symbol in self.symbols:
+                if other_symbol != symbol:
+                    other_data = self.get_market_data(other_symbol)
+                    if not other_data.empty:
+                        other_base = other_symbol.split('/')[0]
+                        other_price = float(other_data['close'].iloc[-1])
+                        current_prices[other_base] = other_price
+            
+            print(f"Current price for {symbol}: {current_price}")
+            
+            signals = []
+            for agent in self.agents:
+                try:
+                    print(f"Agent {agent.name} analyzing {symbol}")
+                    analysis = agent.analyze_market(market_data)
+                    signal = agent.generate_signal(analysis)
+                    
+                    # Get wallet metrics to check progress toward $100 goal
+                    wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
+                    total_value = wallet_metrics['total_value_usdt']
+                    
+                    # Adjust strategy based on progress toward goal
+                    if total_value < 40:  # Less than $40, be very aggressive
+                        # Increase confidence for buy signals
+                        if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                            signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
+                            signal['reason'] += " (Boosted: Aggressive growth strategy to reach $100)"
+                    elif total_value < 70:  # Between $40 and $70, moderately aggressive
+                        if signal['action'] in ['BUY', 'STRONG_BUY']:
+                            signal['confidence'] = min(1.0, signal['confidence'] * 1.2)
+                            signal['reason'] += " (Boosted: Pushing toward $100 goal)"
+                    elif total_value >= 100:  # Goal reached, focus on preservation
+                        if signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+                            signal['confidence'] = min(1.0, signal['confidence'] * 1.3)
+                            signal['reason'] += " (Boosted: Securing profits after reaching $100 goal)"
+                    
+                    # Execute trade if auto-trading is enabled
+                    trade_executed = False
+                    if self.auto_trading_enabled:
+                        trade_executed = agent.execute_trade(symbol, signal, current_price)
+                        if trade_executed:
+                            print(f"🔄 {agent.name} executed {signal['action']} for {symbol} at ${current_price:.2f}")
+                            print(f"   Wallet value: ${total_value:.2f} / $100.00 goal ({total_value/100*100:.1f}%)")
+                    
+                    # Update wallet metrics after trade
+                    wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
+                    personality_traits = agent.get_personality_traits()
+                    
+                    signals.append({
+                        'agent': agent.name,
+                        'personality': personality_traits['personality'],
+                        'symbol': symbol,
+                        'signal': signal,
+                        'risk_tolerance': agent.risk_tolerance,
+                        'strategy': personality_traits['strategy_preferences'],
+                        'market_view': personality_traits['market_beliefs'],
+                        'wallet_metrics': wallet_metrics,
+                        'trade_executed': trade_executed,
+                        'timestamp': datetime.now().timestamp(),
+                        'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"  # Progress toward $100
+                    })
+                    print(f"Signal generated by {agent.name} for {symbol}: {signal['action']}")
+                except Exception as e:
+                    print(f"Error with agent {agent.name} for {symbol}: {str(e)}")
+                    continue
+            
+            return signals
+        except Exception as e:
+            print(f"Error in analyze_market for {symbol}: {str(e)}")
+            return []
     
+    def toggle_auto_trading(self, enabled: bool) -> None:
+        """Enable or disable automatic trading."""
+        self.auto_trading_enabled = enabled
+        status = "enabled" if enabled else "disabled"
+        print(f"Auto-trading {status}")
+        
     def run(self, interval: int = SYSTEM_PARAMS['update_interval']):
         """
         Run the trading system continuously.
@@ -85,21 +239,23 @@ class TradingSystem:
         Args:
             interval (int): Update interval in seconds
         """
+        print("Starting trading system...")
         while True:
-            for symbol in self.symbols:
-                signals = self.analyze_market(symbol)
-                self.signals_history.extend(signals)
-                
-                # Keep only last 1000 signals
-                if len(self.signals_history) > SYSTEM_PARAMS['max_signals_history']:
-                    self.signals_history = self.signals_history[-SYSTEM_PARAMS['max_signals_history']:]
-                
-                # Print signals
-                print(f"\nNew signals for {symbol} at {datetime.now()}:")
-                for signal in signals:
-                    print(f"{signal['agent']}: {signal['signal']['action'].upper()} "
-                          f"(Confidence: {signal['signal']['confidence']:.2f})")
-                
+            try:
+                for symbol in self.symbols:
+                    print(f"\nProcessing {symbol}...")
+                    signals = self.analyze_market(symbol)
+                    with self.lock:
+                        self.signals_history.extend(signals)
+                    
+                    print(f"Generated {len(signals)} signals for {symbol}")
+                    for signal in signals:
+                        print(f"{signal['agent']}: {signal['signal']['action'].upper()} "
+                              f"(Confidence: {signal['signal']['confidence']:.2f})")
+            except Exception as e:
+                print(f"Error in trading system run loop: {str(e)}")
+            
+            print(f"Sleeping for {interval} seconds...")
             time.sleep(interval)
 
 def create_dashboard(trading_system: TradingSystem):
@@ -108,7 +264,8 @@ def create_dashboard(trading_system: TradingSystem):
     """
     app = dash.Dash(
         __name__,
-        meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
+        meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
+        suppress_callback_exceptions=True
     )
     
     # Define theme colors
@@ -141,34 +298,55 @@ def create_dashboard(trading_system: TradingSystem):
             html.P("Real-time cryptocurrency trading signals powered by AI", className='dashboard-subtitle')
         ], className='header'),
         
-        # Navigation tabs
-        dcc.Tabs(id='main-tabs', value='trading-view', className='tabs', children=[
-            dcc.Tab(label='Trading View', value='trading-view', className='tab'),
-            dcc.Tab(label='Traders Comparison', value='traders-comparison', className='tab')
-        ]),
+        # Navigation
+        html.Div([
+            html.Button("Trading View", id='nav-trading-view', className='nav-button active'),
+            html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
+        ], className='nav-container'),
         
         # Content container
-        html.Div(id='tab-content', className='content-container'),
+        html.Div(id='page-content', className='content-container'),
         
         # Interval component for auto-refresh
         dcc.Interval(
             id='interval-component',
             interval=SYSTEM_PARAMS['dashboard_refresh_rate'],
             n_intervals=0
-        )
+        ),
+        
+        # Hidden divs for traders comparison components
+        html.Div([
+            html.Div(id='traders-performance-cards', style={'display': 'none'}),
+            html.Div(id='portfolio-value-chart', style={'display': 'none'}),
+            html.Div(id='holdings-comparison', style={'display': 'none'}),
+            html.Div(id='trade-activity-comparison', style={'display': 'none'})
+        ], style={'display': 'none'})
     ], className='dashboard')
     
     # Callback to render the selected tab content
     @app.callback(
-        Output('tab-content', 'children'),
-        [Input('main-tabs', 'value')]
+        [Output('page-content', 'children'),
+         Output('nav-trading-view', 'className'),
+         Output('nav-traders-comparison', 'className')],
+        [Input('nav-trading-view', 'n_clicks'),
+         Input('nav-traders-comparison', 'n_clicks')]
     )
-    def render_tab_content(tab):
-        if tab == 'trading-view':
-            return create_trading_view(trading_system)
-        elif tab == 'traders-comparison':
-            return create_traders_comparison(trading_system)
-        return html.Div("Tab content not found")
+    def render_content(trading_view_clicks, traders_comparison_clicks):
+        ctx = callback_context
+        
+        if not ctx.triggered:
+            # Default to trading view on initial load
+            return create_trading_view(trading_system), 'nav-button active', 'nav-button'
+            
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        if button_id == 'nav-trading-view':
+            return create_trading_view(trading_system), 'nav-button active', 'nav-button'
+        elif button_id == 'nav-traders-comparison':
+            return create_traders_comparison(trading_system), 'nav-button', 'nav-button active'
+            
+        # Default fallback
+        return create_trading_view(trading_system), 'nav-button active', 'nav-button'
     
     def create_trading_view(trading_system):
         """Create the main trading view layout."""
@@ -222,9 +400,18 @@ def create_dashboard(trading_system: TradingSystem):
                             html.Label("Auto Refresh"),
                             dcc.Checklist(
                                 id='auto-refresh-switch',
-                                options=[{'label': '', 'value': 'enabled'}],
+                                options=[{'label': 'Enabled', 'value': 'enabled'}],
                                 value=['enabled'],
                                 className='auto-refresh-toggle'
+                            )
+                        ], className='switch-container'),
+                        html.Div([
+                            html.Label("Auto Trading"),
+                            dcc.Checklist(
+                                id='auto-trading-switch',
+                                options=[{'label': 'Enabled', 'value': 'enabled'}],
+                                value=['enabled'] if trading_system.auto_trading_enabled else [],
+                                className='auto-trading-toggle'
                             )
                         ], className='switch-container'),
                         html.Div([
@@ -239,38 +426,20 @@ def create_dashboard(trading_system: TradingSystem):
                                 value='2x2',
                                 className='layout-radio'
                             )
-                        ], className='layout-container'),
-                        html.Div([
-                            html.Label("Refresh Interval"),
-                            dcc.Slider(
-                                id='refresh-interval-slider',
-                                min=5,
-                                max=60,
-                                step=5,
-                                value=30,
-                                marks={i: f'{i}s' for i in range(5, 61, 5)},
-                                className='refresh-slider'
-                            )
-                        ], className='slider-container')
-                    ], className='control-panel'),
-                    
-                    # Performance Metrics Panel
-                    html.Div([
-                        html.H3("Performance Metrics", className='panel-title'),
-                        html.Div(id='performance-metrics', className='metrics-container')
-                    ], className='metrics-panel')
+                        ], className='layout-container')
+                    ], className='control-panel')
                 ], className='left-panel'),
                 
                 # Right panel - Charts and Data
                 html.Div([
-                    # Multi-Chart Container
+                    # Charts Container
                     html.Div(id='multi-chart-container', className='chart-grid'),
                     
                     # Market Overview
                     html.Div([
                         html.H3("Market Overview", className='panel-title'),
                         html.Div(id='market-overview', className='market-overview')
-                    ], className='market-panel'),
+                    ], className='chart-panel'),
                     
                     # Trading Signals
                     html.Div([
@@ -279,7 +448,7 @@ def create_dashboard(trading_system: TradingSystem):
                     ], className='signals-panel')
                 ], className='right-panel')
             ], className='main-content')
-        ])
+        ], className='trading-view')
     
     def create_traders_comparison(trading_system):
         """Create the traders comparison view layout."""
@@ -323,221 +492,238 @@ def create_dashboard(trading_system: TradingSystem):
             current_prices = {}
             for symbol in trading_system.symbols:
                 try:
-                    df = trading_system.data_fetcher.get_historical_data(symbol)
+                    df = trading_system.get_market_data(symbol)
                     if not df.empty:
-                        symbol_base = symbol.split('/')[0]
-                        current_prices[symbol_base] = float(df['close'].iloc[-1])
+                        base_currency = symbol.split('/')[0]
+                        current_prices[base_currency] = float(df['close'].iloc[-1])
                 except Exception as e:
                     print(f"Error getting price for {symbol}: {str(e)}")
             
-            # Create performance cards for each agent
-            performance_cards = []
-            portfolio_values = []
-            agent_colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0']
-            
-            for i, agent in enumerate(trading_system.agents):
-                # Get wallet metrics
+            # Get performance metrics for each agent
+            performance_data = []
+            for agent in trading_system.agents:
                 metrics = agent.wallet.get_performance_metrics(current_prices)
                 
-                # Store portfolio value for chart
-                portfolio_values.append({
+                # Calculate progress toward $100 goal
+                goal_progress = metrics['total_value_usdt'] / 100.0
+                goal_status = "Reached!" if goal_progress >= 1.0 else f"{goal_progress*100:.1f}%"
+                
+                performance_data.append({
                     'agent': agent.name,
-                    'value': metrics['total_value_usdt'],
-                    'return': metrics['total_return_pct'],
-                    'color': agent_colors[i % len(agent_colors)]
+                    'personality': agent.get_personality_traits()['personality'],
+                    'total_value': metrics['total_value_usdt'],
+                    'balance_usdt': metrics['balance_usdt'],
+                    'holdings': metrics['holdings'],
+                    'total_return': metrics['total_return_pct'],
+                    'trade_count': metrics['trade_count'],
+                    'goal_progress': goal_progress,
+                    'goal_status': goal_status
                 })
-                
-                # Create performance card
-                card = html.Div([
-                    html.H3(agent.name, className='card-title'),
+            
+            # Sort by total value (best performing first)
+            performance_data.sort(key=lambda x: x['total_value'], reverse=True)
+            
+            # Create performance cards
+            performance_cards = html.Div([
+                html.Div([
                     html.Div([
+                        html.H3([
+                            html.Span(data['agent'].replace(' AI', ''), className='agent-name'),
+                            html.Span(data['personality'], className=f"agent-badge {data['personality'].lower()}")
+                        ]),
                         html.Div([
-                            html.Span("Total Value:", className='metric-label'),
-                            html.Span(f"${metrics['total_value_usdt']:.2f}", className='metric-value')
-                        ], className='metric-row'),
+                            html.Div(f"${data['total_value']:.2f}", className='metric-value'),
+                            html.Div("Total Value", className='metric-label')
+                        ], className='metric'),
                         html.Div([
-                            html.Span("Return:", className='metric-label'),
-                            html.Span(
-                                f"{metrics['total_return_pct']:.2f}%", 
-                                className=f"metric-value {'positive' if metrics['total_return_pct'] >= 0 else 'negative'}"
-                            )
-                        ], className='metric-row'),
+                            html.Div(f"{data['total_return']:.2f}%", 
+                                    className=f"metric-value {'positive' if data['total_return'] > 0 else 'negative'}"),
+                            html.Div("Return", className='metric-label')
+                        ], className='metric'),
                         html.Div([
-                            html.Span("USDT Balance:", className='metric-label'),
-                            html.Span(f"${metrics['balance_usdt']:.2f}", className='metric-value')
-                        ], className='metric-row'),
+                            html.Div(f"{data['trade_count']}", className='metric-value'),
+                            html.Div("Trades", className='metric-label')
+                        ], className='metric'),
                         html.Div([
-                            html.Span("Trades:", className='metric-label'),
-                            html.Span(f"{metrics['trade_count']}", className='metric-value')
-                        ], className='metric-row'),
-                        html.Div([
-                            html.Span("Strategy:", className='metric-label'),
-                            html.Span(agent.personality.split(' - ')[0], className='metric-value')
-                        ], className='metric-row')
+                            html.Div(className='progress-bar-container', children=[
+                                html.Div(
+                                    className='progress-bar',
+                                    style={'width': f"{min(100, data['goal_progress']*100)}%"}
+                                ),
+                                html.Span(
+                                    data['goal_status'], 
+                                    className=f"progress-text {'' if data['goal_progress'] < 1.0 else 'goal-reached'}"
+                                )
+                            ]),
+                            html.Div("Goal Progress ($100)", className='metric-label')
+                        ], className='metric goal-metric'),
                     ], className='card-content')
-                ], className=f'performance-card {agent.name.lower().replace(" ", "-")}', style={'borderColor': agent_colors[i % len(agent_colors)]})
-                
-                performance_cards.append(card)
+                ], className=f"performance-card {'winner' if i == 0 else ''}") 
+                for i, data in enumerate(performance_data)
+            ], className='performance-cards-container')
             
-            # Create portfolio value comparison chart
-            portfolio_fig = go.Figure()
+            # Create portfolio value chart
+            fig = go.Figure()
             
-            for pv in portfolio_values:
-                portfolio_fig.add_trace(go.Bar(
-                    x=[pv['agent']],
-                    y=[pv['value']],
-                    name=pv['agent'],
-                    marker_color=pv['color'],
-                    text=[f"${pv['value']:.2f}<br>{pv['return']:.2f}%"],
-                    textposition='auto'
+            for data in performance_data:
+                # Add a horizontal bar for each agent
+                fig.add_trace(go.Bar(
+                    y=[data['agent'].replace(' AI', '')],
+                    x=[data['total_value']],
+                    orientation='h',
+                    name=data['agent'].replace(' AI', ''),
+                    marker=dict(
+                        color='#4CAF50' if data['goal_progress'] >= 1.0 else '#2196F3',
+                        line=dict(color='rgba(0,0,0,0)', width=0)
+                    ),
+                    hovertemplate='$%{x:.2f}<extra></extra>'
                 ))
-            
-            portfolio_fig.update_layout(
-                title='Portfolio Value by Trader',
+                
+                # Add a marker for the $100 goal
+                fig.add_shape(
+                    type="line",
+                    x0=100, x1=100,
+                    y0=-0.5, y1=len(performance_data) - 0.5,
+                    line=dict(color="#FF9800", width=2, dash="dash"),
+                )
+                
+            fig.update_layout(
+                title="Portfolio Value Comparison",
                 template='plotly_dark',
-                height=400,
-                yaxis_title='Value (USDT)',
+                height=300,
+                margin=dict(l=0, r=0, t=40, b=0),
+                xaxis_title="Value (USDT)",
                 showlegend=False,
-                margin=dict(l=50, r=50, t=80, b=50)
+                xaxis=dict(
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                ),
+                yaxis=dict(
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                ),
+                annotations=[
+                    dict(
+                        x=100,
+                        y=len(performance_data),
+                        xref="x",
+                        yref="y",
+                        text="$100 Goal",
+                        showarrow=True,
+                        arrowhead=2,
+                        ax=0,
+                        ay=-30,
+                        font=dict(color="#FF9800")
+                    )
+                ]
             )
             
-            portfolio_chart = dcc.Graph(figure=portfolio_fig)
+            portfolio_chart = html.Div([
+                dcc.Graph(
+                    figure=fig,
+                    config={'displayModeBar': False}
+                )
+            ], className='portfolio-chart')
             
             # Create holdings comparison
-            holdings_cards = []
-            
-            for i, agent in enumerate(trading_system.agents):
-                metrics = agent.wallet.get_performance_metrics(current_prices)
-                holdings = metrics['holdings']
-                
-                if not holdings:
-                    holdings_card = html.Div([
-                        html.H4(agent.name, className='holdings-card-title'),
-                        html.P("No holdings", className='no-holdings')
-                    ], className='holdings-card')
-                else:
-                    holdings_items = []
-                    for symbol, amount in holdings.items():
-                        value = amount * current_prices.get(symbol, 0)
-                        holdings_items.append(html.Div([
-                            html.Span(f"{symbol}:", className='holding-symbol'),
-                            html.Span(f"{amount:.6f}", className='holding-amount'),
-                            html.Span(f"(${value:.2f})", className='holding-value')
-                        ], className='holding-item'))
-                    
-                    holdings_card = html.Div([
-                        html.H4(agent.name, className='holdings-card-title'),
-                        html.Div(holdings_items, className='holdings-list')
-                    ], className='holdings-card')
-                
-                holdings_cards.append(holdings_card)
-            
-            # Create trade activity comparison
-            trade_activity_cards = []
-            
-            for i, agent in enumerate(trading_system.agents):
-                trade_history = agent.wallet.get_trade_history_df()
-                
-                if trade_history.empty:
-                    trade_card = html.Div([
-                        html.H4(agent.name, className='trade-card-title'),
-                        html.P("No trades executed", className='no-trades')
-                    ], className='trade-card')
-                else:
-                    # Calculate trade statistics
-                    buy_count = len(trade_history[trade_history['action'] == 'BUY'])
-                    sell_count = len(trade_history[trade_history['action'] == 'SELL'])
-                    
-                    # Create trade summary
-                    trade_card = html.Div([
-                        html.H4(agent.name, className='trade-card-title'),
+            holdings_comparison = html.Div([
+                html.H3("Holdings Comparison"),
+                html.Div([
+                    html.Div([
+                        html.H4(data['agent'].replace(' AI', '')),
                         html.Div([
                             html.Div([
-                                html.Span("Total Trades:", className='trade-stat-label'),
-                                html.Span(f"{len(trade_history)}", className='trade-stat-value')
-                            ], className='trade-stat'),
+                                html.Div(f"{symbol}: {amount:.6f}", className='holding-item'),
+                                html.Div(
+                                    f"${amount * current_prices.get(symbol, 0):.2f}",
+                                    className='holding-value'
+                                )
+                            ], className='holding-row')
+                            for symbol, amount in data['holdings'].items()
+                        ] + [
                             html.Div([
-                                html.Span("Buys:", className='trade-stat-label'),
-                                html.Span(f"{buy_count}", className='trade-stat-value buy')
-                            ], className='trade-stat'),
-                            html.Div([
-                                html.Span("Sells:", className='trade-stat-label'),
-                                html.Span(f"{sell_count}", className='trade-stat-value sell')
-                            ], className='trade-stat'),
-                            html.Div([
-                                html.Span("Last Trade:", className='trade-stat-label'),
-                                html.Span(
-                                    f"{trade_history['action'].iloc[-1]} {trade_history['symbol'].iloc[-1]}", 
-                                    className=f"trade-stat-value {trade_history['action'].iloc[-1].lower()}"
-                                ) if not trade_history.empty else html.Span("None", className='trade-stat-value')
-                            ], className='trade-stat')
-                        ], className='trade-stats')
-                    ], className='trade-card')
-                
-                trade_activity_cards.append(trade_card)
+                                html.Div("USDT Balance:", className='holding-item'),
+                                html.Div(f"${data['balance_usdt']:.2f}", className='holding-value')
+                            ], className='holding-row')
+                        ], className='holdings-list')
+                    ], className='holdings-card')
+                    for data in performance_data
+                ], className='holdings-grid')
+            ], className='holdings-comparison')
             
-            return performance_cards, portfolio_chart, holdings_cards, trade_activity_cards
+            # Create trade activity comparison
+            trade_activity = html.Div([
+                html.H3("Recent Trade Activity"),
+                html.Div([
+                    html.Div(id='trade-activity-content', children=[
+                        html.Div("Loading trade activity...", className='loading-message')
+                    ])
+                ], className='trade-activity-container')
+            ], className='trade-activity-comparison')
+            
+            return performance_cards, portfolio_chart, holdings_comparison, trade_activity
             
         except Exception as e:
             print(f"Error updating traders comparison: {str(e)}")
-            return [], html.Div(f"Error: {str(e)}"), [], []
+            return (
+                html.Div(f"Error loading performance data: {str(e)}"),
+                html.Div("Error loading portfolio chart"),
+                html.Div("Error loading holdings comparison"),
+                html.Div("Error loading trade activity")
+            )
     
     def create_signals_table(signals):
-        return html.Table([
-            html.Thead(html.Tr([
-                html.Th("Symbol"),
-                html.Th("Agent"),
-                html.Th("Personality"),
-                html.Th("Action"),
-                html.Th("Commentary"),
-                html.Th("Confidence"),
-                html.Th("Wallet Value"),
-                html.Th("Holdings"),
-                html.Th("Return %")
-            ])),
-            html.Tbody([
-                html.Tr([
-                    html.Td(signal['symbol'].replace('/USDT', '')),
-                    html.Td(signal['agent']),
-                    html.Td(signal['personality'][:30] + "..."),
-                    html.Td(
-                        html.Span(
-                            signal['signal']['action'].upper(),
-                            className=f"signal-{signal['signal']['action'].lower()}"
-                        )
-                    ),
-                    html.Td(
-                        html.Div(
-                            signal['signal'].get('commentary', ''),
-                            className='signal-commentary'
-                        )
-                    ),
-                    html.Td(
-                        html.Div([
-                            html.Div(
-                                className='confidence-bar',
-                                style={'width': f"{signal['signal']['confidence']*100}%"}
-                            ),
-                            html.Span(f"{signal['signal']['confidence']:.2f}")
-                        ], className='confidence-container')
-                    ),
-                    html.Td(f"${signal['wallet_metrics']['total_value_usdt']:.2f}"),
-                    html.Td(
-                        ", ".join([
-                            f"{amount:.4f} {sym}"
-                            for sym, amount in signal['wallet_metrics']['holdings'].items()
-                        ]) or "No holdings"
-                    ),
-                    html.Td(
-                        html.Span(
-                            f"{signal['wallet_metrics']['total_return_pct']:+.2f}%",
-                            className=f"{'positive' if signal['wallet_metrics']['total_return_pct'] > 0 else 'negative'}"
-                        )
-                    )
-                ], className=f"signal-row-{signal['signal']['action'].lower()}")
-                for signal in reversed(signals)
-            ])
-        ], className='signals-table')
+        """Create a table of trading signals."""
+        if not signals:
+            return html.Div("No signals available", className='no-data')
+            
+        return html.Div([
+            html.Table([
+                html.Thead(html.Tr([
+                    html.Th("Agent"),
+                    html.Th("Symbol"),
+                    html.Th("Action"),
+                    html.Th("Confidence"),
+                    html.Th("Reason"),
+                    html.Th("Wallet Value"),
+                    html.Th("Goal Progress"),
+                    html.Th("Trade Status"),
+                    html.Th("Time")
+                ])),
+                html.Tbody([
+                    html.Tr([
+                        html.Td([
+                            html.Span(signal['agent'].replace(' AI', ''), className='agent-name'),
+                            html.Span(signal['personality'], className=f"agent-badge {signal['personality'].lower()}")
+                        ]),
+                        html.Td(signal['symbol'].replace('/USDT', '')),
+                        html.Td(
+                            signal['signal']['action'],
+                            className=f"action-{signal['signal']['action'].lower()}"
+                        ),
+                        html.Td(f"{signal['signal']['confidence']:.2f}"),
+                        html.Td(signal['signal']['reason']),
+                        html.Td(f"${signal['wallet_metrics']['total_value_usdt']:.2f}"),
+                        html.Td([
+                            html.Div(className='progress-bar-container', children=[
+                                html.Div(
+                                    className='progress-bar',
+                                    style={'width': f"{min(100, signal['wallet_metrics']['total_value_usdt'])}%"}
+                                ),
+                                html.Span(f"{signal['wallet_metrics']['total_value_usdt']/100*100:.1f}%", className='progress-text')
+                            ])
+                        ]),
+                        html.Td(
+                            "✅ Executed" if signal.get('trade_executed', False) else 
+                            "⏳ Pending" if signal['signal']['action'] not in ['HOLD', 'WATCH'] else 
+                            "⏹️ No Action",
+                            className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending' if signal['signal']['action'] not in ['HOLD', 'WATCH'] else 'no-action'}"
+                        ),
+                        html.Td(datetime.fromtimestamp(signal['timestamp']).strftime('%H:%M:%S'))
+                    ]) for signal in signals
+                ])
+            ], className='signals-table-content')
+        ], className='signals-table-container')
     
     def create_performance_metrics(performance_data):
         return html.Div([
@@ -570,6 +756,213 @@ def create_dashboard(trading_system: TradingSystem):
             ], className='market-card')
             for data in market_data
         ], className='market-grid')
+    
+    @app.callback(
+        [Output('multi-chart-container', 'children'),
+         Output('market-overview', 'children'),
+         Output('signals-table', 'children')],
+        [Input('interval-component', 'n_intervals'),
+         Input('symbol-multi-dropdown', 'value'),
+         Input('timeframe-dropdown', 'value'),
+         Input('indicator-checklist', 'value'),
+         Input('chart-style', 'value'),
+         Input('layout-radio', 'value')],
+        [State('auto-refresh-switch', 'value')]
+    )
+    def update_trading_view(n, symbols, timeframe, indicators, chart_style, layout, auto_refresh):
+        """Update the trading view components."""
+        print("\nUpdating trading view...")
+        print(f"Symbols: {symbols}")
+        print(f"Timeframe: {timeframe}")
+        print(f"Indicators: {indicators}")
+        print(f"Chart style: {chart_style}")
+        print(f"Layout: {layout}")
+        
+        if not callback_context.triggered:
+            print("No context triggered")
+            raise PreventUpdate
+        
+        if 'enabled' not in auto_refresh and callback_context.triggered[0]['prop_id'] == 'interval-component.n_intervals':
+            print("Auto-refresh disabled")
+            raise PreventUpdate
+        
+        if not symbols:
+            print("No symbols selected")
+            return [], html.Div("No symbols selected"), html.Div("No signals available")
+        
+        try:
+            # Create charts
+            charts = []
+            market_overview_data = []
+            
+            for symbol in symbols:
+                try:
+                    print(f"Processing {symbol}...")
+                    df = trading_system.get_market_data(symbol)
+                    if df.empty:
+                        print(f"No data available for {symbol}")
+                        continue
+                    
+                    fig = go.Figure()
+                    
+                    # Add price data
+                    if chart_style == 'candlestick':
+                        fig.add_trace(go.Candlestick(
+                            x=df.index,
+                            open=df['open'],
+                            high=df['high'],
+                            low=df['low'],
+                            close=df['close'],
+                            name=symbol
+                        ))
+                    elif chart_style == 'line':
+                        fig.add_trace(go.Scatter(
+                            x=df.index,
+                            y=df['close'],
+                            mode='lines',
+                            name=symbol
+                        ))
+                    elif chart_style == 'ohlc':
+                        fig.add_trace(go.Ohlc(
+                            x=df.index,
+                            open=df['open'],
+                            high=df['high'],
+                            low=df['low'],
+                            close=df['close'],
+                            name=symbol
+                        ))
+                    
+                    # Add indicators
+                    if 'SMA' in indicators:
+                        sma20 = ta.trend.sma_indicator(df['close'], window=20)
+                        sma50 = ta.trend.sma_indicator(df['close'], window=50)
+                        fig.add_trace(go.Scatter(x=df.index, y=sma20, name='SMA 20', line=dict(color='orange')))
+                        fig.add_trace(go.Scatter(x=df.index, y=sma50, name='SMA 50', line=dict(color='blue')))
+                    
+                    if 'RSI' in indicators:
+                        rsi = ta.momentum.rsi(df['close'])
+                        fig.add_trace(go.Scatter(x=df.index, y=rsi, name='RSI', yaxis='y2'))
+                        fig.update_layout(
+                            yaxis2=dict(
+                                title="RSI",
+                                overlaying="y",
+                                side="right",
+                                range=[0, 100]
+                            )
+                        )
+                        
+                    if 'MACD' in indicators:
+                        macd = ta.trend.macd(df['close'])
+                        macd_signal = ta.trend.macd_signal(df['close'])
+                        macd_diff = ta.trend.macd_diff(df['close'])
+                        fig.add_trace(go.Scatter(x=df.index, y=macd, name='MACD', line=dict(color='blue')))
+                        fig.add_trace(go.Scatter(x=df.index, y=macd_signal, name='Signal', line=dict(color='orange')))
+                        fig.add_trace(go.Bar(x=df.index, y=macd_diff, name='Histogram', marker_color='green'))
+                    
+                    if 'BB' in indicators:
+                        bb = ta.volatility.BollingerBands(df['close'])
+                        fig.add_trace(go.Scatter(x=df.index, y=bb.bollinger_hband(),
+                                               name='BB Upper', line=dict(dash='dash')))
+                        fig.add_trace(go.Scatter(x=df.index, y=bb.bollinger_lband(),
+                                               name='BB Lower', line=dict(dash='dash')))
+                    
+                    # Update layout
+                    fig.update_layout(
+                        title=f'{symbol} Price Chart',
+                        template='plotly_dark',
+                        height=400,
+                        xaxis_rangeslider_visible=False,
+                        showlegend=True,
+                        legend=dict(
+                            yanchor="top",
+                            y=0.99,
+                            xanchor="left",
+                            x=0.01
+                        )
+                    )
+                    
+                    # Create chart container based on layout
+                    chart_container_class = f'chart-container-{layout}'
+                    chart = html.Div([
+                        dcc.Graph(
+                            figure=fig,
+                            config={'displayModeBar': True}
+                        )
+                    ], className=chart_container_class)
+                    
+                    charts.append(chart)
+                    
+                    # Add market overview data
+                    current_price = df['close'].iloc[-1]
+                    price_change = ((current_price / df['close'].iloc[-2] - 1) * 100)
+                    market_overview_data.append({
+                        'symbol': symbol,
+                        'price': current_price,
+                        'change': price_change,
+                        'volume': df['volume'].iloc[-1]
+                    })
+                    
+                except Exception as e:
+                    print(f"Error processing chart for {symbol}: {str(e)}")
+                    continue
+            
+            if not charts:
+                print("No charts created")
+                return [], html.Div("No data available"), html.Div("No signals available")
+            
+            # Apply layout class to chart grid
+            chart_grid_class = f'chart-grid-{layout}'
+            chart_grid = html.Div(charts, className=chart_grid_class)
+            
+            # Create market overview table
+            market_overview = html.Div([
+                html.Table([
+                    html.Thead(html.Tr([
+                        html.Th("Symbol"),
+                        html.Th("Price"),
+                        html.Th("24h Change"),
+                        html.Th("Volume")
+                    ])),
+                    html.Tbody([
+                        html.Tr([
+                            html.Td(data['symbol'].replace('/USDT', '')),
+                            html.Td(f"${data['price']:.2f}"),
+                            html.Td(
+                                f"{data['change']:.2f}%",
+                                className=f"{'positive' if data['change'] > 0 else 'negative'}"
+                            ),
+                            html.Td(f"{data['volume']:,.0f}")
+                        ]) for data in market_overview_data
+                    ])
+                ], className='market-overview-table')
+            ])
+            
+            # Create signals table
+            recent_signals = sorted(
+                [s for s in trading_system.signals_history if s['symbol'] in symbols],
+                key=lambda x: x['timestamp'],
+                reverse=True
+            )[:10]
+            
+            signals_table = create_signals_table(recent_signals)
+            
+            print(f"Successfully created {len(charts)} charts")
+            return chart_grid, market_overview, signals_table
+            
+        except Exception as e:
+            print(f"Error updating trading view: {str(e)}")
+            return [], html.Div(f"Error: {str(e)}"), html.Div("No signals available")
+    
+    # Callback to toggle auto-trading
+    @app.callback(
+        Output('auto-trading-switch', 'value'),
+        [Input('auto-trading-switch', 'value')]
+    )
+    def toggle_auto_trading(value):
+        """Toggle auto-trading based on the switch value."""
+        enabled = 'enabled' in value if value else False
+        trading_system.toggle_auto_trading(enabled)
+        return value
     
     # Add custom CSS
     app.index_string = '''
@@ -764,7 +1157,7 @@ def create_dashboard(trading_system: TradingSystem):
                     .chart-grid-2x2 {
                         grid-template-columns: 1fr;
                     }
-                    
+                
                     .main-content {
                         flex-direction: column;
                     }
@@ -891,7 +1284,7 @@ def create_dashboard(trading_system: TradingSystem):
                     .chart-grid-2x3 {
                         grid-template-columns: 1fr;
                     }
-                    
+                
                     .performance-grid,
                     .market-grid {
                         grid-template-columns: 1fr;
@@ -1175,6 +1568,53 @@ def create_dashboard(trading_system: TradingSystem):
                 .agent-technical {
                     background: rgba(156, 39, 176, 0.2);
                     color: #9c27b0;
+                }
+                
+                /* Trade status styles */
+                .trade-status-executed {
+                    color: #4CAF50;
+                    font-weight: bold;
+                }
+                .trade-status-pending {
+                    color: #FF9800;
+                    font-weight: bold;
+                }
+                .trade-status-no-action {
+                    color: #9E9E9E;
+                    font-weight: bold;
+                }
+                
+                /* Signals table improvements */
+                .signals-table-container {
+                    overflow-x: auto;
+                    margin-top: 10px;
+                    border-radius: 8px;
+                    background-color: #1a1a1a;
+                }
+                .signals-table-content {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                .signals-table-content th {
+                    background-color: #2b3c4e;
+                    padding: 12px 15px;
+                    text-align: left;
+                    font-weight: bold;
+                    color: white;
+                    position: sticky;
+                    top: 0;
+                }
+                .signals-table-content td {
+                    padding: 10px 15px;
+                    border-bottom: 1px solid #2b3c4e;
+                }
+                .signals-table-content tr:hover {
+                    background-color: #2b3c4e;
+                }
+                .no-data {
+                    padding: 20px;
+                    text-align: center;
+                    color: #a8b2c1;
                 }
             </style>
         </head>

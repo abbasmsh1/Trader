@@ -288,5 +288,13 @@ class BaseAgent(ABC):
         return False  # No trade for WATCH or HOLD
         
     def get_wallet_metrics(self, current_prices: Dict[str, float]) -> Dict:
-        """Get wallet performance metrics."""
+        """
+        Get wallet metrics including balance, value, and performance.
+        
+        Args:
+            current_prices (Dict[str, float]): Current prices of assets
+            
+        Returns:
+            Dict: Wallet metrics
+        """
         return self.wallet.get_performance_metrics(current_prices) 
