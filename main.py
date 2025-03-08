@@ -52,18 +52,22 @@ class TradingSystem:
         
         # Initialize trading agents with different personalities
         self.agents = [
-            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),  # ValueInvestor doesn't accept risk_tolerance in __init__
-            TechDisruptor(name="Elon Musk AI", timeframe='1h'),  # TechDisruptor has fixed risk_tolerance
-            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h'),  # TrendFollower accepts risk_tolerance
-            ContrarianTrader(name="Michael Burry AI", timeframe='1d'),  # Contrarian trader looking for bubbles
-            MacroTrader(name="Ray Dalio AI", timeframe='1d'),  # Macro trader with systematic approach
-            SwingTrader(name="Jesse Livermore AI", timeframe='4h')  # Swing trader with aggressive style
+            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
+            TechDisruptor(name="Elon Musk AI", timeframe='1h'),
+            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h'),
+            ContrarianTrader(name="Michael Burry AI", timeframe='1d'),
+            MacroTrader(name="Ray Dalio AI", timeframe='1d'),
+            SwingTrader(name="Jesse Livermore AI", timeframe='4h'),
+            # Adding three new traders
+            ValueInvestor(name="Charlie Munger AI", timeframe='1d'),
+            TrendFollower(name="Paul Tudor Jones AI", risk_tolerance=0.8, timeframe='4h'),
+            MacroTrader(name="George Soros AI", timeframe='1d')
         ]
         
         self.signals_history = []
         self.market_data_cache = {}
         self.last_update = {}
-        self.auto_trading_enabled = True  # Enable auto-trading by default
+        self.auto_trading_enabled = True
         
         # Holdings history for each trader
         self.holdings_history = {agent.name: [] for agent in self.agents}
@@ -536,6 +540,17 @@ def create_dashboard(trading_system):
         suppress_callback_exceptions=True
     )
     
+    # Initialize signals history if not present
+    if not hasattr(trading_system, 'signals_history'):
+        trading_system.signals_history = []
+    
+    # Initialize wallets if needed
+    for agent in trading_system.agents:
+        if not hasattr(agent, 'wallet'):
+            agent.wallet = Wallet(initial_balance_usdt=20.0)
+        if not hasattr(agent.wallet, 'holdings'):
+            agent.wallet.holdings = {}
+    
     app.layout = html.Div([
         # Header
         html.Div([
@@ -545,60 +560,9 @@ def create_dashboard(trading_system):
         
         # Navigation
         html.Div([
-            html.Button("Trading View", id='nav-trading-view', className='nav-button active'),
+            html.Button("Market Overview", id='nav-market-overview', className='nav-button active'),
             html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
         ], className='nav-container'),
-        
-        # Trading View Controls
-        html.Div([
-            html.Div([
-                html.Label("Timeframe"),
-                dcc.Dropdown(
-                    id='timeframe-dropdown',
-                    options=[
-                        {'label': '1 Hour', 'value': '1h'},
-                        {'label': '4 Hours', 'value': '4h'},
-                        {'label': '1 Day', 'value': '1d'}
-                    ],
-                    value='1h',
-                    className='dropdown'
-                ),
-                html.Label("Technical Indicators"),
-                dcc.Checklist(
-                    id='indicator-checklist',
-                    options=[
-                        {'label': 'SMA', 'value': 'SMA'},
-                        {'label': 'RSI', 'value': 'RSI'},
-                        {'label': 'MACD', 'value': 'MACD'},
-                        {'label': 'Bollinger Bands', 'value': 'BB'}
-                    ],
-                    value=['SMA', 'RSI'],
-                    className='indicator-checklist'
-                ),
-                html.Label("Chart Style"),
-                dcc.RadioItems(
-                    id='chart-style',
-                    options=[
-                        {'label': 'Candlestick', 'value': 'candlestick'},
-                        {'label': 'Line', 'value': 'line'},
-                        {'label': 'OHLC', 'value': 'ohlc'}
-                    ],
-                    value='candlestick',
-                    className='chart-style-radio'
-                ),
-                html.Label("Layout"),
-                dcc.RadioItems(
-                    id='layout-radio',
-                    options=[
-                        {'label': '2x2 Grid', 'value': '2x2'},
-                        {'label': '2x3 Grid', 'value': '2x3'},
-                        {'label': '1x4 List', 'value': '1x4'}
-                    ],
-                    value='2x2',
-                    className='layout-radio'
-                )
-            ], className='control-panel')
-        ], className='controls-container'),
         
         # Auto-refresh interval (30 seconds)
         dcc.Interval(
@@ -616,17 +580,49 @@ def create_dashboard(trading_system):
         
         # Main content area
         html.Div([
-            # Charts container
-            html.Div(id='multi-chart-container', className='chart-grid'),
+            # Market Overview Tab
+            html.Div([
+                html.Div(id='market-overview', className='market-overview'),
+                html.Div(id='multi-chart-container', className='chart-grid'),
+            ], id='market-overview-tab'),
             
-            # Market Overview
-            html.Div(id='market-overview', className='market-overview'),
-            
-            # Signals Table
-            html.Div(id='signals-table', className='signals-table-container'),
-            
-            # Performance cards
-            html.Div(id='traders-performance-cards', className='performance-cards-grid')
+            # Traders Portfolio Tab
+            html.Div([
+                # Trading View Controls
+                html.Div([
+                    html.Div([
+                        html.Label("Timeframe"),
+                        dcc.Dropdown(
+                            id='timeframe-dropdown',
+                            options=[
+                                {'label': '1 Hour', 'value': '1h'},
+                                {'label': '4 Hours', 'value': '4h'},
+                                {'label': '1 Day', 'value': '1d'}
+                            ],
+                            value='1h',
+                            className='dropdown'
+                        ),
+                        html.Label("Technical Indicators"),
+                        dcc.Checklist(
+                            id='indicator-checklist',
+                            options=[
+                                {'label': 'SMA', 'value': 'SMA'},
+                                {'label': 'RSI', 'value': 'RSI'},
+                                {'label': 'MACD', 'value': 'MACD'},
+                                {'label': 'Bollinger Bands', 'value': 'BB'}
+                            ],
+                            value=['SMA', 'RSI'],
+                            className='indicator-checklist'
+                        )
+                    ], className='control-panel')
+                ], className='controls-container'),
+                
+                # Signals Table
+                html.Div(id='signals-table', className='signals-table-container'),
+                
+                # Performance cards
+                html.Div(id='traders-performance-cards', className='performance-cards-grid')
+            ], id='traders-portfolio-tab', style={'display': 'none'})
         ], className='main-content'),
         
         # Memory status indicator
@@ -637,16 +633,30 @@ def create_dashboard(trading_system):
     ], className='dashboard-container')
     
     @app.callback(
+        [Output('market-overview-tab', 'style'),
+         Output('traders-portfolio-tab', 'style')],
+        [Input('nav-market-overview', 'n_clicks'),
+         Input('nav-traders-comparison', 'n_clicks')]
+    )
+    def toggle_tabs(market_clicks, traders_clicks):
+        ctx = callback_context
+        if not ctx.triggered:
+            return {'display': 'block'}, {'display': 'none'}
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        if button_id == 'nav-market-overview':
+            return {'display': 'block'}, {'display': 'none'}
+        else:
+            return {'display': 'none'}, {'display': 'block'}
+    
+    @app.callback(
         [Output('multi-chart-container', 'children'),
          Output('market-overview', 'children'),
          Output('signals-table', 'children')],
         [Input('auto-refresh-interval', 'n_intervals'),
          Input('timeframe-dropdown', 'value'),
-         Input('indicator-checklist', 'value'),
-         Input('chart-style', 'value'),
-         Input('layout-radio', 'value')]
+         Input('indicator-checklist', 'value')]
     )
-    def update_trading_view(n, timeframe, indicators, chart_style, layout):
+    def update_trading_view(n, timeframe, indicators):
         """Update the trading view components."""
         try:
             # Get market data for all symbols
@@ -661,32 +671,15 @@ def create_dashboard(trading_system):
                 # Create figure
                 fig = go.Figure()
                 
-                # Add price data based on chart style
-                if chart_style == 'candlestick':
-                    fig.add_trace(go.Candlestick(
-                        x=df.index,
-                        open=df['open'],
-                        high=df['high'],
-                        low=df['low'],
-                        close=df['close'],
-                        name=symbol
-                    ))
-                elif chart_style == 'line':
-                    fig.add_trace(go.Scatter(
-                        x=df.index,
-                        y=df['close'],
-                        mode='lines',
-                        name=symbol
-                    ))
-                else:  # OHLC
-                    fig.add_trace(go.Ohlc(
-                        x=df.index,
-                        open=df['open'],
-                        high=df['high'],
-                        low=df['low'],
-                        close=df['close'],
-                        name=symbol
-                    ))
+                # Add candlestick chart (default style)
+                fig.add_trace(go.Candlestick(
+                    x=df.index,
+                    open=df['open'],
+                    high=df['high'],
+                    low=df['low'],
+                    close=df['close'],
+                    name=symbol
+                ))
                 
                 # Add indicators
                 if 'SMA' in indicators:
@@ -713,7 +706,7 @@ def create_dashboard(trading_system):
                 )
                 
                 # Create chart container
-                chart = html.Div(dcc.Graph(figure=fig), className=f'chart-container-{layout}')
+                chart = html.Div(dcc.Graph(figure=fig), className='chart-container')
                 charts.append(chart)
                 
                 # Add to market data
@@ -798,7 +791,8 @@ def create_dashboard(trading_system):
                 if symbol.endswith('/USDT'):
                     df = trading_system.get_market_data(symbol)
                     if not df.empty:
-                        current_prices[symbol] = float(df['close'].iloc[-1])
+                        base_currency = symbol.split('/')[0]
+                        current_prices[base_currency] = float(df['close'].iloc[-1])
             
             # Get performance data for each agent
             performance_data = []
@@ -807,22 +801,26 @@ def create_dashboard(trading_system):
                     metrics = agent.wallet.get_performance_metrics(current_prices)
                     total_value = metrics['total_value_usdt']
                     usdt_balance = metrics['balance_usdt']
-                    holdings = metrics['holdings_with_prices']
+                    holdings = metrics['holdings']
                     
                     # Calculate crypto value
                     crypto_value = total_value - usdt_balance
                     
                     # Format holdings for display
                     holdings_display = []
-                    for symbol, data in holdings.items():
-                        if data['amount'] > 0:
-                            display_symbol = symbol.replace('/USDT', '')
+                    for symbol, amount in holdings.items():
+                        if amount > 0:
+                            price = current_prices.get(symbol, 0)
+                            value_usdt = amount * price
                             holdings_display.append({
-                                'symbol': display_symbol,
-                                'amount': data['amount'],
-                                'price': data['price'],
-                                'value_usdt': data['value_usdt']
+                                'symbol': symbol,
+                                'amount': amount,
+                                'price': price,
+                                'value_usdt': value_usdt
                             })
+                    
+                    # Sort holdings by value
+                    holdings_display.sort(key=lambda x: x['value_usdt'], reverse=True)
                     
                     # Calculate goal progress
                     goal_progress = (total_value / 100.0) * 100
@@ -912,11 +910,16 @@ def create_dashboard(trading_system):
     return app
 
 if __name__ == '__main__':
-    # Import trading system here to avoid circular imports
-    from trading_system import TradingSystem
-    
     # Create trading system instance
     trading_system = TradingSystem()
+    
+    # Initialize the system
+    trading_system._load_state()  # Load previous state if available
+    
+    # Start the trading system in a background thread
+    trading_thread = Thread(target=trading_system.run)
+    trading_thread.daemon = True
+    trading_thread.start()
     
     # Create and run the dashboard
     app = create_dashboard(trading_system)
