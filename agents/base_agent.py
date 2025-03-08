@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from typing import Dict, List, Optional, Literal
+from typing import Dict, List, Optional, Literal, Any
 import pandas as pd
 from data.market_news import MarketNewsFetcher
+from data.wallet import Wallet
 
 # Define trading actions as constants
 TradingAction = Literal[
@@ -36,6 +37,7 @@ class BaseAgent(ABC):
         self.strategy_preferences: Dict[str, float] = {}
         self.market_beliefs: Dict[str, str] = {}
         self.news_fetcher = MarketNewsFetcher()
+        self.wallet = Wallet(initial_balance_usdt=20.0)
         
         # Action thresholds for different signal types
         self.action_thresholds = {
@@ -50,7 +52,7 @@ class BaseAgent(ABC):
         }
         
     @abstractmethod
-    def analyze_market(self, market_data: pd.DataFrame) -> Dict:
+    def analyze_market(self, market_data: pd.DataFrame) -> Dict[str, Any]:
         """
         Analyze market data and generate insights.
         
@@ -63,7 +65,7 @@ class BaseAgent(ABC):
         pass
     
     @abstractmethod
-    def generate_signal(self, analysis: Dict) -> Dict:
+    def generate_signal(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate trading signals based on analysis.
         
@@ -258,4 +260,33 @@ class BaseAgent(ABC):
         return f"Market news sentiment: {sentiment_str} ({confidence_str} confidence). " + \
                f"Based on {sentiment['article_count']} recent articles " + \
                f"({sentiment['positive_ratio']*100:.0f}% positive, " + \
-               f"{sentiment['negative_ratio']*100:.0f}% negative)." 
+               f"{sentiment['negative_ratio']*100:.0f}% negative)."
+    
+    def execute_trade(self, symbol: str, signal: Dict[str, Any], current_price: float) -> bool:
+        """Execute a trade based on the signal."""
+        action = signal['action'].upper()
+        confidence = signal['confidence']
+        
+        # Calculate trade amount based on confidence and risk tolerance
+        max_trade_amount = self.wallet.balance_usdt * self.risk_tolerance
+        trade_amount = max_trade_amount * confidence
+        
+        # Minimum trade amount of 5 USDT
+        if trade_amount < 5.0:
+            trade_amount = 5.0
+            
+        if action in ['STRONG_BUY', 'BUY', 'SCALE_IN']:
+            # Buy with available funds
+            return self.wallet.execute_buy(symbol, trade_amount, current_price)
+            
+        elif action in ['STRONG_SELL', 'SELL', 'SCALE_OUT']:
+            # Sell a portion of holdings based on confidence
+            position_size = self.wallet.get_position_size(symbol)
+            sell_amount = position_size * confidence
+            return self.wallet.execute_sell(symbol, sell_amount, current_price)
+            
+        return False  # No trade for WATCH or HOLD
+        
+    def get_wallet_metrics(self, current_prices: Dict[str, float]) -> Dict:
+        """Get wallet performance metrics."""
+        return self.wallet.get_performance_metrics(current_prices) 

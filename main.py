@@ -45,11 +45,22 @@ class TradingSystem:
         # Set the symbol name in the market data
         market_data.name = symbol
         
+        # Get current price
+        current_price = float(market_data['close'].iloc[-1])
+        
         signals = []
+        current_prices = {symbol: current_price}
+        
         for agent in self.agents:
             # Get analysis and signal from each agent
             analysis = agent.analyze_market(market_data)
             signal = agent.generate_signal(analysis)
+            
+            # Execute trade based on signal
+            trade_executed = agent.execute_trade(symbol, signal, current_price)
+            
+            # Get wallet metrics
+            wallet_metrics = agent.get_wallet_metrics(current_prices)
             
             # Add agent personality info to signal
             personality_traits = agent.get_personality_traits()
@@ -60,7 +71,9 @@ class TradingSystem:
                 'signal': signal,
                 'risk_tolerance': agent.risk_tolerance,
                 'strategy': personality_traits['strategy_preferences'],
-                'market_view': personality_traits['market_beliefs']
+                'market_view': personality_traits['market_beliefs'],
+                'wallet_metrics': wallet_metrics,
+                'trade_executed': trade_executed
             })
             
         return signals
@@ -499,7 +512,9 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Th("Action"),
                 html.Th("Commentary"),
                 html.Th("Confidence"),
-                html.Th("Price")
+                html.Th("Wallet Value"),
+                html.Th("Holdings"),
+                html.Th("Return %")
             ])),
             html.Tbody([
                 html.Tr([
@@ -527,7 +542,19 @@ def create_dashboard(trading_system: TradingSystem):
                             html.Span(f"{signal['signal']['confidence']:.2f}")
                         ], className='confidence-container')
                     ),
-                    html.Td(f"${signal['signal']['price']:,.2f}")
+                    html.Td(f"${signal['wallet_metrics']['total_value_usdt']:.2f}"),
+                    html.Td(
+                        ", ".join([
+                            f"{amount:.4f} {sym}"
+                            for sym, amount in signal['wallet_metrics']['holdings'].items()
+                        ]) or "No holdings"
+                    ),
+                    html.Td(
+                        html.Span(
+                            f"{signal['wallet_metrics']['total_return_pct']:+.2f}%",
+                            className=f"{'positive' if signal['wallet_metrics']['total_return_pct'] > 0 else 'negative'}"
+                        )
+                    )
                 ], className=f"signal-row-{signal['signal']['action'].lower()}")
                 for signal in reversed(signals)
             ])
