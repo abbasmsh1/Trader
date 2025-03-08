@@ -63,35 +63,43 @@ class TechDisruptor(BaseAgent):
         latest = df.iloc[-1]
         prev = df.iloc[-2]
         
+        # Ensure numeric values and handle NaN
+        rsi = float(latest['RSI']) if pd.notnull(latest['RSI']) else 50.0
+        macd = float(latest['MACD']) if pd.notnull(latest['MACD']) else 0.0
+        volume_surge = float(latest['volume_surge']) if pd.notnull(latest['volume_surge']) else 1.0
+        momentum = float(latest['momentum']) if pd.notnull(latest['momentum']) else 0.0
+        volatility = float(latest['volatility']) if pd.notnull(latest['volatility']) else 0.0
+        close_price = float(latest['close']) if pd.notnull(latest['close']) else 0.0
+        
         # Calculate trend and momentum metrics
-        price_momentum = latest['momentum']
-        volume_momentum = latest['volume_surge']
-        trend_strength = latest['MACD'] / df['MACD'].std()
+        price_momentum = momentum
+        volume_momentum = volume_surge
+        trend_strength = macd / (df['MACD'].std() if df['MACD'].std() > 0 else 1.0)
         
         # Identify potential breakout patterns
         is_breakout = (
-            latest['RSI'] > 70 and
-            latest['volume_surge'] > self.volume_surge_threshold and
+            rsi > 70 and
+            volume_surge > self.volume_surge_threshold and
             price_momentum > self.trend_threshold
         )
         
         # Calculate innovation score (based on momentum and volume)
         innovation_score = (
-            (latest['RSI'] / 100) * 0.3 +
-            (min(latest['volume_surge'] / 3, 1)) * 0.3 +
+            (rsi / 100) * 0.3 +
+            (min(volume_surge / 3, 1)) * 0.3 +
             (min(abs(price_momentum) * 10, 1)) * 0.4
         )
         
         return {
-            'price': latest['close'],
-            'rsi': latest['RSI'],
-            'macd': latest['MACD'],
-            'volume_surge': latest['volume_surge'],
-            'momentum': price_momentum,
-            'trend_strength': trend_strength,
-            'is_breakout': is_breakout,
-            'innovation_score': innovation_score,
-            'volatility': latest['volatility'],
+            'price': close_price,
+            'rsi': rsi,
+            'macd': macd,
+            'volume_surge': volume_surge,
+            'momentum': float(price_momentum),
+            'trend_strength': float(trend_strength),
+            'is_breakout': bool(is_breakout),
+            'innovation_score': float(innovation_score),
+            'volatility': volatility,
             'timestamp': latest.name
         }
     
@@ -102,70 +110,70 @@ class TechDisruptor(BaseAgent):
         """
         signal = {
             'action': 'HOLD',
-            'price': analysis['price'],
+            'price': float(analysis['price']),
             'confidence': 0.0,
             'timestamp': analysis['timestamp']
         }
         
         # Base confidence on momentum and innovation metrics
         base_confidence = min(
-            analysis['innovation_score'] * 0.6 +
-            abs(analysis['trend_strength']) * 0.4,
+            float(analysis['innovation_score']) * 0.6 +
+            abs(float(analysis['trend_strength'])) * 0.4,
             1.0
         )
         
         # Determine trend direction
-        trend_direction = 1 if analysis['trend_strength'] > 0 else -1 if analysis['trend_strength'] < 0 else 0
+        trend_direction = 1 if float(analysis['trend_strength']) > 0 else -1 if float(analysis['trend_strength']) < 0 else 0
         
         # Explosive breakout opportunity
         if (analysis['is_breakout'] and
-            analysis['momentum'] > self.trend_threshold * 2 and
-            analysis['volume_surge'] > self.volume_surge_threshold * 1.5):
+            float(analysis['momentum']) > self.trend_threshold * 2 and
+            float(analysis['volume_surge']) > self.volume_surge_threshold * 1.5):
             
             signal['action'] = 'STRONG_BUY'
             signal['confidence'] = base_confidence * 0.95
             
         # Strong momentum entry
         elif (analysis['is_breakout'] and
-              analysis['momentum'] > self.trend_threshold and
-              analysis['volume_surge'] > self.volume_surge_threshold):
+              float(analysis['momentum']) > self.trend_threshold and
+              float(analysis['volume_surge']) > self.volume_surge_threshold):
             
             signal['action'] = 'BUY'
             signal['confidence'] = base_confidence * 0.85
             
         # Building momentum
-        elif (analysis['momentum'] > self.trend_threshold * 0.5 and
-              analysis['volume_surge'] > self.volume_surge_threshold * 0.8):
+        elif (float(analysis['momentum']) > self.trend_threshold * 0.5 and
+              float(analysis['volume_surge']) > self.volume_surge_threshold * 0.8):
             
             signal['action'] = 'SCALE_IN'
             signal['confidence'] = base_confidence * 0.75
             
         # Strong reversal
-        elif (analysis['rsi'] < 20 and
-              analysis['momentum'] < -self.trend_threshold * 2 and
-              analysis['trend_strength'] < -0.2):
+        elif (float(analysis['rsi']) < 20 and
+              float(analysis['momentum']) < -self.trend_threshold * 2 and
+              float(analysis['trend_strength']) < -0.2):
             
             signal['action'] = 'STRONG_SELL'
             signal['confidence'] = base_confidence * 0.9
             
         # Momentum breakdown
-        elif (analysis['rsi'] < 30 and
-              analysis['momentum'] < -self.trend_threshold and
-              analysis['trend_strength'] < 0):
+        elif (float(analysis['rsi']) < 30 and
+              float(analysis['momentum']) < -self.trend_threshold and
+              float(analysis['trend_strength']) < 0):
             
             signal['action'] = 'SELL'
             signal['confidence'] = base_confidence * 0.8
             
         # Taking profits
-        elif (analysis['rsi'] > 80 or
-              analysis['momentum'] < -self.trend_threshold * 0.5):
+        elif (float(analysis['rsi']) > 80 or
+              float(analysis['momentum']) < -self.trend_threshold * 0.5):
             
             signal['action'] = 'SCALE_OUT'
             signal['confidence'] = base_confidence * 0.7
             
         # Monitoring conditions
-        elif (abs(analysis['momentum']) < self.trend_threshold * 0.3 or
-              analysis['volume_surge'] < 1.0):
+        elif (abs(float(analysis['momentum'])) < self.trend_threshold * 0.3 or
+              float(analysis['volume_surge']) < 1.0):
             
             signal['action'] = 'WATCH'
             signal['confidence'] = base_confidence * 0.6
