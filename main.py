@@ -40,6 +40,9 @@ class TradingSystem:
             # Coin-to-coin pairs
             'BTC/ETH', 'ETH/BTC', 'BNB/BTC', 'SOL/BTC',
             
+            # AI and Gaming tokens
+            'ARKM/USDT', 'AGIX/USDT', 'IMX/USDT', 'RNDR/USDT',
+            
             # Meme coins
             'DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT',
             
@@ -54,15 +57,27 @@ class TradingSystem:
         self.agents = [
             ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
             TechDisruptor(name="Elon Musk AI", timeframe='1h'),
-            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h'),
             ContrarianTrader(name="Michael Burry AI", timeframe='1d'),
             MacroTrader(name="Ray Dalio AI", timeframe='1d'),
             SwingTrader(name="Jesse Livermore AI", timeframe='4h'),
-            # Adding three new traders
-            ValueInvestor(name="Charlie Munger AI", timeframe='1d'),
-            TrendFollower(name="Paul Tudor Jones AI", risk_tolerance=0.8, timeframe='4h'),
-            MacroTrader(name="George Soros AI", timeframe='1d')
+            TrendFollower(name="Paul Tudor Jones AI", risk_tolerance=0.8, timeframe='4h')
         ]
+        
+        # Add and configure high-risk trader
+        high_risk_trader = TrendFollower(name="High-Risk Trader", risk_tolerance=1.0, timeframe='1h')
+        high_risk_trader.set_strategy_preferences({
+            'value_investing': 0.1,
+            'momentum_trading': 1.0,
+            'trend_following': 1.0,
+            'swing_trading': 0.9,
+            'scalping': 1.0
+        })
+        high_risk_trader.update_market_beliefs({
+            'market_trend': 'extremely_bullish',
+            'volatility_expectation': 'very_high',
+            'risk_assessment': 'high_reward'
+        })
+        self.agents.append(high_risk_trader)
         
         self.signals_history = []
         self.market_data_cache = {}
@@ -81,16 +96,36 @@ class TradingSystem:
         # Make initial BTC purchase for all agents
         self._make_initial_btc_purchase()
         
+        self.discussions = []  # Store agent discussions
+        
     def _reset_agents(self):
         """Reset all agents to their initial state."""
         print("Resetting all agents to initial state...")
         for agent in self.agents:
             agent.wallet = Wallet(initial_balance_usdt=20.0)
+            agent.wallet.holdings = {}
+            agent.wallet.trades_history = []
             print(f"Reset {agent.name}'s wallet to $20.0 USDT")
+            
+        # Clear signals history
+        self.signals_history = []
+        
+        # Clear holdings history
+        self.holdings_history = {agent.name: [] for agent in self.agents}
+        
+        # Clear discussions
+        self.discussions = []
+        
+        # Save the reset state
+        self._save_state()
+        print("Trading system reset complete!")
     
     def _load_state(self):
         """Load saved state from disk if available."""
-        self._state_loaded = False
+        # Force reset on startup
+        self._reset_agents()
+        self._state_loaded = True
+        print("Forced reset of trading system on startup")
         try:
             state_file = os.path.join(os.path.dirname(__file__), 'data', 'trading_state.pkl')
             if os.path.exists(state_file):
@@ -112,7 +147,6 @@ class TradingSystem:
                 self.holdings_history = state.get('holdings_history', {agent.name: [] for agent in self.agents})
                 
                 print(f"Loaded saved state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
-                self._state_loaded = True
             else:
                 print("No saved state found, starting fresh")
         except Exception as e:
@@ -281,6 +315,60 @@ class TradingSystem:
             print(f"Error in get_market_data for {symbol}: {str(e)}")
             return pd.DataFrame()
             
+    def generate_discussion(self, signals: List[Dict]) -> str:
+        """Generate a discussion between agents about their trading signals."""
+        if not signals:
+            return ""
+            
+        try:
+            # Group signals by action type
+            bullish_agents = [s for s in signals if s['signal']['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']]
+            bearish_agents = [s for s in signals if s['signal']['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']]
+            neutral_agents = [s for s in signals if s['signal']['action'] in ['HOLD', 'WATCH']]
+            
+            symbol = signals[0]['symbol']
+            discussion = []
+            
+            # Start with a bullish perspective if any
+            if bullish_agents:
+                bull = bullish_agents[0]
+                discussion.append(f"{bull['agent']}: I'm seeing a strong opportunity in {symbol}. "
+                               f"My {bull['personality']} approach suggests {bull['signal']['action']} "
+                               f"with {bull['signal']['confidence']:.0%} confidence. {bull['signal'].get('reason', '')}")
+                
+                # Add supporting or opposing views
+                if len(bullish_agents) > 1:
+                    supporter = bullish_agents[1]
+                    discussion.append(f"{supporter['agent']}: I agree! {supporter['signal'].get('reason', 'The technical indicators are aligning.')}")
+                
+            # Add bearish perspective
+            if bearish_agents:
+                bear = bearish_agents[0]
+                discussion.append(f"{bear['agent']}: I disagree. {bear['signal'].get('reason', 'The risks are too high.')} "
+                               f"I'm {bear['signal']['action']} with {bear['signal']['confidence']:.0%} confidence.")
+                
+            # Add neutral perspective
+            if neutral_agents:
+                neutral = neutral_agents[0]
+                discussion.append(f"{neutral['agent']}: Let's not be hasty. {neutral['signal'].get('reason', 'The market needs more time to show its direction.')}")
+                
+            # Add a concluding remark from a high-performing agent
+            top_agent = max(signals, key=lambda x: x.get('wallet_metrics', {}).get('total_value_usdt', 0))
+            discussion.append(f"{top_agent['agent']}: Based on my performance so far (${top_agent['wallet_metrics']['total_value_usdt']:.2f}), "
+                           f"I'm sticking to my {top_agent['signal']['action']} position.")
+            
+            # Add the discussion to history
+            self.discussions.append({
+                'timestamp': datetime.now(),
+                'symbol': symbol,
+                'discussion': discussion
+            })
+            
+            return discussion
+        except Exception as e:
+            print(f"Error generating discussion: {str(e)}")
+            return []
+            
     def analyze_market(self, symbol: str) -> List[Dict]:
         """Analyze market data using all agents with a focus on reaching $100 goal."""
         try:
@@ -394,6 +482,14 @@ class TradingSystem:
                     print(f"Error with agent {agent.name} for {symbol}: {str(e)}")
                     continue
             
+            # Generate discussion about the signals
+            if signals:
+                discussion = self.generate_discussion(signals)
+                print("\nAgent Discussion:")
+                for message in discussion:
+                    print(message)
+                print()
+            
             return signals
         except Exception as e:
             print(f"Error in analyze_market for {symbol}: {str(e)}")
@@ -473,10 +569,10 @@ class TradingSystem:
             for agent in self.agents:
                 metrics = agent.wallet.get_performance_metrics(current_prices)
                 
-                # Calculate crypto holdings value
+                # Calculate crypto holdings value (only for non-dust amounts)
                 crypto_value = metrics['total_value_usdt'] - metrics['balance_usdt']
                 
-                # Record holdings snapshot
+                # Record holdings snapshot (filtering out dust amounts)
                 holdings_snapshot = {
                     'timestamp': timestamp,
                     'total_value_usdt': metrics['total_value_usdt'],
@@ -485,10 +581,11 @@ class TradingSystem:
                     'holdings': {
                         symbol: {
                             'amount': amount,
-                            'price_usdt': current_prices.get(symbol, 0),
-                            'value_usdt': amount * current_prices.get(symbol, 0)
+                            'price_usdt': current_prices.get(symbol.split('/')[0] if '/' in symbol else symbol, 0),
+                            'value_usdt': amount * current_prices.get(symbol.split('/')[0] if '/' in symbol else symbol, 0)
                         }
                         for symbol, amount in metrics['holdings'].items()
+                        if amount > 1e-8  # Only include non-dust amounts
                     }
                 }
                 
@@ -537,7 +634,8 @@ def create_dashboard(trading_system):
     app = dash.Dash(
         __name__,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
-        suppress_callback_exceptions=True
+        suppress_callback_exceptions=True,
+        assets_folder='assets'  # Point to assets folder for static files
     )
     
     # Initialize signals history if not present
@@ -552,18 +650,37 @@ def create_dashboard(trading_system):
             agent.wallet.holdings = {}
     
     app.layout = html.Div([
-        # Header
+        # Header with new style
         html.Div([
-            html.H1("AI Crypto Trading Dashboard", className='dashboard-title'),
-            html.P("Trading bots competing to turn $20 into $100", className='dashboard-subtitle')
+            html.Div([
+                html.H1([
+                    "AI Crypto Trading Arena ",
+                    html.Span("LIVE", className='live-badge')
+                ], className='dashboard-title'),
+                html.P([
+                    "AI Traders Battle: $20 → $100 Challenge ",
+                    html.Span("🤖", className='emoji'),
+                    html.Span("💰", className='emoji')
+                ], className='dashboard-subtitle')
+            ], className='header-content'),
+            html.Div([
+                html.Button("Reset All Traders", id='reset-traders-button', className='reset-button'),
+                html.Div(id='market-summary-stats', className='market-stats')
+            ], className='header-stats')
         ], className='header'),
-        
-        # Navigation
+
+        # Navigation with tooltips
         html.Div([
-            html.Button("Market Overview", id='nav-market-overview', className='nav-button active'),
-            html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
+            html.Div([
+                html.Button("Market Overview", id='nav-market-overview', className='nav-button active'),
+                html.Div("View market prices and charts", className='tooltip')
+            ], className='nav-item'),
+            html.Div([
+                html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button'),
+                html.Div("Compare trader performance", className='tooltip')
+            ], className='nav-item')
         ], className='nav-container'),
-        
+
         # Auto-refresh interval (30 seconds)
         dcc.Interval(
             id='auto-refresh-interval',
@@ -577,21 +694,25 @@ def create_dashboard(trading_system):
             interval=5 * 60 * 1000,  # in milliseconds
             n_intervals=0
         ),
-        
-        # Main content area
+
+        # Main content area with reorganized layout
         html.Div([
             # Market Overview Tab
             html.Div([
-                html.Div(id='market-overview', className='market-overview'),
+                # Charts Grid at the top
                 html.Div(id='multi-chart-container', className='chart-grid'),
-            ], id='market-overview-tab'),
-            
-            # Traders Portfolio Tab
-            html.Div([
-                # Trading View Controls
+                
+                # Market Overview Table
+                html.Div(id='market-overview', className='market-overview'),
+                
+                # Trading Controls
                 html.Div([
                     html.Div([
-                        html.Label("Timeframe"),
+                        html.Label([
+                            "Timeframe ",
+                            html.Span("ℹ️", className='info-icon'),
+                            html.Div("Select chart timeframe", className='tooltip')
+                        ]),
                         dcc.Dropdown(
                             id='timeframe-dropdown',
                             options=[
@@ -601,8 +722,14 @@ def create_dashboard(trading_system):
                             ],
                             value='1h',
                             className='dropdown'
-                        ),
-                        html.Label("Technical Indicators"),
+                        )
+                    ], className='control-item'),
+                    html.Div([
+                        html.Label([
+                            "Technical Indicators ",
+                            html.Span("ℹ️", className='info-icon'),
+                            html.Div("Choose indicators to display", className='tooltip')
+                        ]),
                         dcc.Checklist(
                             id='indicator-checklist',
                             options=[
@@ -614,21 +741,75 @@ def create_dashboard(trading_system):
                             value=['SMA', 'RSI'],
                             className='indicator-checklist'
                         )
-                    ], className='control-panel')
-                ], className='controls-container'),
+                    ], className='control-item')
+                ], className='trading-controls')
+            ], id='market-overview-tab'),
+            
+            # Traders Portfolio Tab
+            html.Div([
+                # Signals Table with filter
+                html.Div([
+                    html.Div([
+                        html.H3("Recent Signals"),
+                        dcc.Dropdown(
+                            id='signal-filter',
+                            options=[
+                                {'label': 'All Signals', 'value': 'all'},
+                                {'label': 'Buy Signals', 'value': 'buy'},
+                                {'label': 'Sell Signals', 'value': 'sell'},
+                                {'label': 'Hold Signals', 'value': 'hold'}
+                            ],
+                            value='all',
+                            className='signal-filter'
+                        )
+                    ], className='signals-header'),
+                    html.Div(id='signals-table', className='signals-table-container')
+                ], className='signals-section'),
                 
-                # Signals Table
-                html.Div(id='signals-table', className='signals-table-container'),
+                # Performance cards with sorting
+                html.Div([
+                    html.Div([
+                        html.H3("Trader Performance"),
+                        dcc.Dropdown(
+                            id='performance-sort',
+                            options=[
+                                {'label': 'Sort by Total Value', 'value': 'total'},
+                                {'label': 'Sort by Profit %', 'value': 'profit'},
+                                {'label': 'Sort by Goal Progress', 'value': 'goal'}
+                            ],
+                            value='total',
+                            className='performance-sort'
+                        )
+                    ], className='performance-header'),
+                    html.Div(id='traders-performance-cards', className='performance-cards-grid')
+                ], className='performance-section'),
                 
-                # Performance cards
-                html.Div(id='traders-performance-cards', className='performance-cards-grid')
+                # Agent Discussions Panel with filters
+                html.Div([
+                    html.Div([
+                        html.H3("Agent Discussions"),
+                        dcc.Dropdown(
+                            id='discussion-filter',
+                            options=[
+                                {'label': 'All Discussions', 'value': 'all'},
+                                {'label': 'Bullish Views', 'value': 'bullish'},
+                                {'label': 'Bearish Views', 'value': 'bearish'},
+                                {'label': 'Neutral Views', 'value': 'neutral'}
+                            ],
+                            value='all',
+                            className='discussion-filter'
+                        )
+                    ], className='discussions-header'),
+                    html.Div(id='agent-discussions', className='discussions-container')
+                ], className='discussions-panel')
             ], id='traders-portfolio-tab', style={'display': 'none'})
         ], className='main-content'),
         
-        # Memory status indicator
+        # Memory status indicator with animation
         html.Div([
             html.Span("💾", className="icon"),
-            html.Span("Memory system active", id="memory-status-text")
+            html.Span("Memory system active", id="memory-status-text"),
+            html.Div(className="pulse-ring")
         ], id="memory-status", className="memory-status")
     ], className='dashboard-container')
     
@@ -654,9 +835,10 @@ def create_dashboard(trading_system):
          Output('signals-table', 'children')],
         [Input('auto-refresh-interval', 'n_intervals'),
          Input('timeframe-dropdown', 'value'),
-         Input('indicator-checklist', 'value')]
+         Input('indicator-checklist', 'value'),
+         Input('signal-filter', 'value')]
     )
-    def update_trading_view(n, timeframe, indicators):
+    def update_trading_view(n, timeframe, indicators, signal_filter):
         """Update the trading view components."""
         try:
             # Get market data for all symbols
@@ -744,8 +926,18 @@ def create_dashboard(trading_system):
                 ], className='market-overview-table')
             ])
             
-            # Create signals table
+            # Create signals table with filtering
             recent_signals = trading_system.signals_history[-10:]  # Get last 10 signals
+            
+            # Apply filter
+            if signal_filter != 'all':
+                if signal_filter == 'buy':
+                    recent_signals = [s for s in recent_signals if 'BUY' in s['signal']['action']]
+                elif signal_filter == 'sell':
+                    recent_signals = [s for s in recent_signals if 'SELL' in s['signal']['action']]
+                elif signal_filter == 'hold':
+                    recent_signals = [s for s in recent_signals if 'HOLD' in s['signal']['action']]
+            
             signals_table = html.Div([
                 html.Table([
                     html.Thead(html.Tr([
@@ -761,13 +953,28 @@ def create_dashboard(trading_system):
                             html.Td(datetime.fromtimestamp(signal['timestamp']).strftime('%H:%M:%S')),
                             html.Td(signal['agent']),
                             html.Td(signal['symbol']),
-                            html.Td(signal['signal']['action']),
-                            html.Td(f"{signal['signal']['confidence']:.2f}"),
                             html.Td(
-                                "✅ Executed" if signal.get('trade_executed', False) else "⏳ Pending",
-                                className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending'}"
+                                signal['signal']['action'],
+                                className=f"signal-{signal['signal']['action'].lower()}"
+                            ),
+                            html.Td(
+                                html.Div([
+                                    html.Div(
+                                        className='confidence-bar',
+                                        style={'width': f"{signal['signal']['confidence']*100}%"}
+                                    ),
+                                    html.Span(f"{signal['signal']['confidence']:.2f}")
+                                ], className='confidence-container')
+                            ),
+                            html.Td(
+                                html.Div([
+                                    html.Span("✅" if signal.get('trade_executed', False) else "⏳"),
+                                    html.Span(
+                                        "Executed" if signal.get('trade_executed', False) else "Pending"
+                                    )
+                                ], className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending'}")
                             )
-                        ]) for signal in reversed(recent_signals)
+                        ], className='signal-row') for signal in reversed(recent_signals)
                     ])
                 ], className='signals-table-content')
             ])
@@ -788,51 +995,63 @@ def create_dashboard(trading_system):
             # Get current prices for all symbols
             current_prices = {}
             for symbol in trading_system.symbols:
-                if symbol.endswith('/USDT'):
+                try:
                     df = trading_system.get_market_data(symbol)
                     if not df.empty:
-                        base_currency = symbol.split('/')[0]
-                        current_prices[base_currency] = float(df['close'].iloc[-1])
+                        # Store price both with and without /USDT suffix for compatibility
+                        price = float(df['close'].iloc[-1])
+                        if '/' in symbol:
+                            base_currency = symbol.split('/')[0]
+                            current_prices[base_currency] = price
+                            current_prices[symbol] = price  # Store full symbol version too
+                except Exception as e:
+                    print(f"Error getting price for {symbol}: {str(e)}")
             
             # Get performance data for each agent
             performance_data = []
             for agent in trading_system.agents:
                 try:
+                    # Get wallet metrics
                     metrics = agent.wallet.get_performance_metrics(current_prices)
-                    total_value = metrics['total_value_usdt']
-                    usdt_balance = metrics['balance_usdt']
-                    holdings = metrics['holdings']
                     
-                    # Calculate crypto value
-                    crypto_value = total_value - usdt_balance
-                    
-                    # Format holdings for display
+                    # Get holdings that have non-zero amounts
                     holdings_display = []
-                    for symbol, amount in holdings.items():
-                        if amount > 0:
-                            price = current_prices.get(symbol, 0)
-                            value_usdt = amount * price
+                    for symbol, holding_data in metrics['holdings_with_prices'].items():
+                        if holding_data['amount'] > 1e-8:  # Only display non-dust amounts
                             holdings_display.append({
-                                'symbol': symbol,
-                                'amount': amount,
-                                'price': price,
-                                'value_usdt': value_usdt
+                                'symbol': symbol.split('/')[0] if '/' in symbol else symbol,
+                                'amount': holding_data['amount'],
+                                'price': holding_data['price'],
+                                'value_usdt': holding_data['value_usdt']
                             })
                     
                     # Sort holdings by value
                     holdings_display.sort(key=lambda x: x['value_usdt'], reverse=True)
                     
+                    # Get trade history and format it properly
+                    trades_history = []
+                    for trade in agent.wallet.trades_history[-5:]:  # Get last 5 trades
+                        if isinstance(trade, dict) and 'symbol' in trade:
+                            trades_history.append({
+                                'symbol': trade['symbol'],
+                                'is_buy': trade.get('action', '').upper() == 'BUY',
+                                'amount': trade.get('amount_crypto', 0),
+                                'price': trade.get('price', 0),
+                                'value': trade.get('amount_usdt', 0)
+                            })
+                    
                     # Calculate goal progress
-                    goal_progress = (total_value / 100.0) * 100
+                    goal_progress = (metrics['total_value_usdt'] / 100.0) * 100
                     goal_status = "Goal Reached! 🏆" if goal_progress >= 100 else f"{goal_progress:.1f}% to $100"
                     
                     performance_data.append({
                         'name': agent.name,
                         'personality': agent.get_personality_traits()['personality'],
-                        'total_value': total_value,
-                        'usdt_balance': usdt_balance,
-                        'crypto_value': crypto_value,
+                        'total_value': metrics['total_value_usdt'],
+                        'usdt_balance': metrics['balance_usdt'],
+                        'crypto_value': metrics['total_value_usdt'] - metrics['balance_usdt'],
                         'holdings': holdings_display,
+                        'trades': trades_history,
                         'goal_progress': goal_progress,
                         'goal_status': goal_status
                     })
@@ -875,8 +1094,34 @@ def create_dashboard(trading_system):
                                     html.Span(f"(${h['value_usdt']:.2f})", className='holding-value')
                                 ], className='holding-row')
                                 for h in data['holdings']
-                            ], className='holdings-list')
+                            ], className='holdings-list') if data['holdings'] else html.Div("No crypto holdings", className='no-holdings')
                         ], className='holdings-container'),
+                        # Add Trade History Section
+                        html.Div([
+                            html.H4("Recent Trades", className='trades-title'),
+                            html.Div([
+                                html.Div([
+                                    html.Div([
+                                        html.Span(
+                                            "BUY" if trade['is_buy'] else "SELL",
+                                            className=f"trade-type {'buy' if trade['is_buy'] else 'sell'}"
+                                        ),
+                                        html.Span(trade['symbol'], className='trade-symbol')
+                                    ], className='trade-header'),
+                                    html.Div([
+                                        html.Span(
+                                            f"{trade['amount']:.8f} @ ${trade['price']:.2f}",
+                                            className='trade-details'
+                                        ),
+                                        html.Span(
+                                            f"${trade['value']:.2f}",
+                                            className='trade-value'
+                                        )
+                                    ], className='trade-info')
+                                ], className='trade-row')
+                                for trade in reversed(data['trades'])
+                            ], className='trades-list') if data['trades'] else html.Div("No trade history", className='no-trades')
+                        ], className='trades-container'),
                         html.Div([
                             html.Div(className='goal-progress-bar', children=[
                                 html.Div(
@@ -894,6 +1139,67 @@ def create_dashboard(trading_system):
             
         except Exception as e:
             print(f"Error updating traders comparison: {str(e)}")
+            return html.Div("Error loading trader data", className='error-message')
+    
+    @app.callback(
+        Output('agent-discussions', 'children'),
+        [Input('auto-refresh-interval', 'n_intervals'),
+         Input('discussion-filter', 'value')]
+    )
+    def update_discussions(n, discussion_filter):
+        """Update the agent discussions panel with filtering."""
+        try:
+            if not trading_system.discussions:
+                return html.Div("No recent discussions", className='no-discussions')
+            
+            recent_discussions = trading_system.discussions[-5:]  # Get last 5 discussions
+            
+            # Apply filter
+            if discussion_filter != 'all':
+                filtered_discussions = []
+                for disc in recent_discussions:
+                    # Check if any message in the discussion matches the filter
+                    messages = disc['discussion']
+                    if discussion_filter == 'bullish' and any('BUY' in msg or 'bullish' in msg.lower() for msg in messages):
+                        filtered_discussions.append(disc)
+                    elif discussion_filter == 'bearish' and any('SELL' in msg or 'bearish' in msg.lower() for msg in messages):
+                        filtered_discussions.append(disc)
+                    elif discussion_filter == 'neutral' and any('HOLD' in msg or 'neutral' in msg.lower() for msg in messages):
+                        filtered_discussions.append(disc)
+                recent_discussions = filtered_discussions
+            
+            discussions = []
+            for disc in reversed(recent_discussions):
+                discussion = html.Div([
+                    html.Div([
+                        html.Div([
+                            html.Span(disc['symbol'], className='discussion-symbol'),
+                            html.Span(
+                                disc['timestamp'].strftime('%H:%M:%S'),
+                                className='discussion-time'
+                            )
+                        ]),
+                        html.Div(className='discussion-indicator')
+                    ], className='discussion-header'),
+                    html.Div([
+                        html.Div([
+                            html.Span(
+                                message.split(':')[0],
+                                className='agent-name'
+                            ),
+                            html.Span(
+                                message.split(':', 1)[1] if ':' in message else message,
+                                className='message-content'
+                            )
+                        ], className='discussion-message')
+                        for message in disc['discussion']
+                    ], className='discussion-content')
+                ], className='discussion-block')
+                discussions.append(discussion)
+            
+            return html.Div(discussions, className='discussions-list')
+        except Exception as e:
+            print(f"Error updating discussions: {str(e)}")
             return dash.no_update
     
     @app.callback(
@@ -906,6 +1212,72 @@ def create_dashboard(trading_system):
             trading_system._save_state()
             return "memory-status saved"
         return "memory-status"
+    
+    @app.callback(
+        Output('market-summary-stats', 'children'),
+        [Input('auto-refresh-interval', 'n_intervals')]
+    )
+    def update_market_summary(n):
+        """Update market summary statistics."""
+        try:
+            stats = []
+            total_volume = 0
+            gainers = 0
+            losers = 0
+            
+            for symbol in trading_system.symbols[:8]:  # Top 8 symbols
+                df = trading_system.get_market_data(symbol)
+                if df.empty:
+                    continue
+                
+                current_price = float(df['close'].iloc[-1])
+                prev_price = float(df['close'].iloc[-2])
+                change_24h = ((current_price - prev_price) / prev_price) * 100
+                volume = float(df['volume'].iloc[-1])
+                
+                total_volume += volume
+                if change_24h > 0:
+                    gainers += 1
+                else:
+                    losers += 1
+            
+            stats = html.Div([
+                html.Div([
+                    html.Span("24h Volume", className='stat-label'),
+                    html.Span(f"${total_volume:,.0f}", className='stat-value')
+                ], className='stat-item'),
+                html.Div([
+                    html.Span("Gainers", className='stat-label'),
+                    html.Span(f"{gainers}", className='stat-value positive')
+                ], className='stat-item'),
+                html.Div([
+                    html.Span("Losers", className='stat-label'),
+                    html.Span(f"{losers}", className='stat-value negative')
+                ], className='stat-item')
+            ])
+            
+            return stats
+        except Exception as e:
+            print(f"Error updating market summary: {str(e)}")
+            return html.Div("Error loading market summary")
+    
+    @app.callback(
+        Output('memory-status-text', 'children'),
+        [Input('reset-traders-button', 'n_clicks')]
+    )
+    def reset_all_traders(n_clicks):
+        if n_clicks is None:
+            raise PreventUpdate
+            
+        try:
+            # Reset all traders
+            trading_system._reset_agents()
+            # Make initial BTC purchase
+            trading_system._make_initial_btc_purchase()
+            return "All traders reset successfully"
+        except Exception as e:
+            print(f"Error resetting traders: {str(e)}")
+            return "Error resetting traders"
     
     return app
 

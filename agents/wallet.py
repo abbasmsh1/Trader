@@ -48,9 +48,12 @@ class Wallet:
             
         amount_usdt = amount_crypto * price
         self.balance_usdt += amount_usdt
+        
+        # Update holdings
         self.holdings[symbol] -= amount_crypto
         
-        if self.holdings[symbol] < 1e-8:  # Remove dust
+        # Remove the symbol if all coins are sold or only dust remains
+        if self.holdings[symbol] <= 1e-8:  # Increased dust threshold slightly
             del self.holdings[symbol]
             
         self.trades_history.append({
@@ -67,9 +70,10 @@ class Wallet:
     def get_total_value_usdt(self, current_prices: Dict[str, float]) -> float:
         """Calculate total wallet value in USDT."""
         total = self.balance_usdt
+        
+        # Only include non-zero holdings
         for symbol, amount in self.holdings.items():
-            # Extract base currency from symbol (e.g., 'BTC/USDT' -> 'BTC/USDT')
-            if symbol in current_prices:
+            if amount > 1e-8 and symbol in current_prices:  # Check for dust
                 total += amount * current_prices[symbol]
         return total
     
@@ -83,9 +87,10 @@ class Wallet:
         total_return = ((total_value - self.initial_balance_usdt) / 
                        self.initial_balance_usdt * 100)
         
+        # Only include non-dust holdings
         holdings_with_prices = {}
         for symbol, amount in self.holdings.items():
-            if symbol in current_prices:
+            if amount > 1e-8 and symbol in current_prices:  # Check for dust
                 holdings_with_prices[symbol] = {
                     'amount': amount,
                     'price': current_prices[symbol],
@@ -95,7 +100,7 @@ class Wallet:
         return {
             'total_value_usdt': total_value,
             'balance_usdt': self.balance_usdt,
-            'holdings': self.holdings.copy(),
+            'holdings': {k: v for k, v in self.holdings.items() if v > 1e-8},  # Filter out dust
             'holdings_with_prices': holdings_with_prices,
             'total_return_pct': total_return,
             'trade_count': len(self.trades_history),
