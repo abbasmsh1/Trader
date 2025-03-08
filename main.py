@@ -7,6 +7,9 @@ from data.market_data import MarketDataFetcher
 from agents.value_investor import ValueInvestor
 from agents.tech_disruptor import TechDisruptor
 from agents.trend_follower import TrendFollower
+from agents.contrarian_trader import ContrarianTrader
+from agents.macro_trader import MacroTrader
+from agents.swing_trader import SwingTrader
 import dash
 from dash import dcc, html, callback_context
 from dash.dependencies import Input, Output, State
@@ -16,6 +19,8 @@ from threading import Thread, Lock
 import plotly.io as pio
 from config.settings import DEFAULT_SYMBOLS, SYSTEM_PARAMS, TIMEFRAMES
 import ta
+from plotly.subplots import make_subplots
+from agents.wallet import Wallet
 
 # Set default plotly theme
 pio.templates.default = "plotly_dark"
@@ -49,7 +54,10 @@ class TradingSystem:
         self.agents = [
             ValueInvestor(name="Warren Buffett AI", timeframe='1d'),  # ValueInvestor doesn't accept risk_tolerance in __init__
             TechDisruptor(name="Elon Musk AI", timeframe='1h'),  # TechDisruptor has fixed risk_tolerance
-            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h')  # TrendFollower accepts risk_tolerance
+            TrendFollower(name="Technical Trader", risk_tolerance=0.9, timeframe='4h'),  # TrendFollower accepts risk_tolerance
+            ContrarianTrader(name="Michael Burry AI", timeframe='1d'),  # Contrarian trader looking for bubbles
+            MacroTrader(name="Ray Dalio AI", timeframe='1d'),  # Macro trader with systematic approach
+            SwingTrader(name="Jesse Livermore AI", timeframe='4h')  # Swing trader with aggressive style
         ]
         
         self.signals_history = []
@@ -63,13 +71,19 @@ class TradingSystem:
         # Thread safety
         self.lock = Lock()
         
-        # Load saved state if available
-        self._load_state()
+        # Reset all agents' wallets to initial state
+        self._reset_agents()
         
-        # Make initial BTC purchase for all agents if no state was loaded
-        if not self._state_loaded:
-            self._make_initial_btc_purchase()
-            
+        # Make initial BTC purchase for all agents
+        self._make_initial_btc_purchase()
+        
+    def _reset_agents(self):
+        """Reset all agents to their initial state."""
+        print("Resetting all agents to initial state...")
+        for agent in self.agents:
+            agent.wallet = Wallet(initial_balance_usdt=20.0)
+            print(f"Reset {agent.name}'s wallet to $20.0 USDT")
+    
     def _load_state(self):
         """Load saved state from disk if available."""
         self._state_loaded = False
@@ -396,7 +410,9 @@ class TradingSystem:
         """
         print("Starting trading system...")
         last_save_time = time.time()
+        last_record_time = time.time()
         save_interval = 300  # Save state every 5 minutes
+        record_interval = 60  # Record holdings every 1 minute
         
         while True:
             try:
@@ -410,8 +426,14 @@ class TradingSystem:
                         if len(self.signals_history) > 1000:
                             self.signals_history = self.signals_history[-1000:]
                 
-                # Save state periodically
+                # Record holdings periodically
                 current_time = time.time()
+                if current_time - last_record_time > record_interval:
+                    self.record_holdings()
+                    last_record_time = current_time
+                    print("Recorded trader holdings")
+                
+                # Save state periodically
                 if current_time - last_save_time > save_interval:
                     self._save_state()
                     last_save_time = current_time
@@ -749,6 +771,37 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Div([
                     html.H3("Holdings Breakdown", className='subsection-title'),
                     html.Div(id='holdings-comparison', className='holdings-comparison')
+                ], className='chart-section'),
+                
+                # Holdings history
+                html.Div([
+                    html.H3("Holdings History", className='subsection-title'),
+                    html.Div([
+                        html.Div([
+                            html.Label("Select Trader"),
+                            dcc.Dropdown(
+                                id='trader-history-dropdown',
+                                options=[{'label': agent.name, 'value': agent.name} for agent in trading_system.agents],
+                                value=trading_system.agents[0].name if trading_system.agents else None,
+                                className='dropdown'
+                            )
+                        ], className='history-control'),
+                        html.Div([
+                            html.Label("Timeframe"),
+                            dcc.RadioItems(
+                                id='history-timeframe-radio',
+                                options=[
+                                    {'label': 'Day', 'value': 'day'},
+                                    {'label': 'Week', 'value': 'week'},
+                                    {'label': 'Month', 'value': 'month'},
+                                    {'label': 'All', 'value': 'all'}
+                                ],
+                                value='day',
+                                className='history-timeframe-radio'
+                            )
+                        ], className='history-control')
+                    ], className='history-controls'),
+                    html.Div(id='holdings-history-chart', className='history-chart')
                 ], className='chart-section'),
                 
                 # Trade activity
@@ -3231,6 +3284,73 @@ def create_dashboard(trading_system: TradingSystem):
                     font-style: italic;
                     padding: 20px;
                 }
+                
+                .holdings-history {
+                    background: var(--card-bg);
+                    border-radius: 8px;
+                    padding: 20px;
+                    margin: 20px 0;
+                }
+                
+                .holdings-history h3 {
+                    color: var(--text-primary);
+                    margin-bottom: 20px;
+                    font-size: 1.2em;
+                }
+                
+                .holdings-history .controls {
+                    display: flex;
+                    gap: 20px;
+                    margin-bottom: 20px;
+                    align-items: center;
+                }
+                
+                .holdings-history .Select-control {
+                    background-color: var(--input-bg) !important;
+                    border-color: var(--border-color) !important;
+                }
+                
+                .holdings-history .Select-menu-outer {
+                    background-color: var(--input-bg) !important;
+                    border-color: var(--border-color) !important;
+                }
+                
+                .holdings-history .Select-value-label {
+                    color: var(--text-primary) !important;
+                }
+                
+                .holdings-history .radio-group {
+                    display: flex;
+                    gap: 15px;
+                }
+                
+                .holdings-history .radio-group label {
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    color: var(--text-primary);
+                    cursor: pointer;
+                }
+                
+                .holdings-history .radio-group input[type="radio"] {
+                    accent-color: var(--primary-color);
+                }
+                
+                .holdings-history .no-data {
+                    text-align: center;
+                    padding: 40px;
+                    color: var(--text-secondary);
+                    font-style: italic;
+                }
+                
+                .holdings-history .error-message {
+                    color: var(--error-color);
+                    padding: 20px;
+                    text-align: center;
+                    background: rgba(255, 0, 0, 0.1);
+                    border-radius: 4px;
+                    margin: 20px 0;
+                }
             </style>
         </head>
         <body>
@@ -3255,6 +3375,154 @@ def create_dashboard(trading_system: TradingSystem):
             trading_system._save_state()
             return "memory-status saved"
         return "memory-status"
+    
+    @app.callback(
+        Output('holdings-history-chart', 'children'),
+        [Input('trader-history-dropdown', 'value'),
+         Input('history-timeframe-radio', 'value'),
+         Input('interval-component', 'n_intervals')]
+    )
+    def update_holdings_history(trader_name, timeframe, n):
+        """Update the holdings history chart."""
+        if not trader_name:
+            return html.Div("Please select a trader", className='no-data')
+            
+        try:
+            # Get holdings history for the selected trader and timeframe
+            history = trading_system.get_holdings_history(trader_name, timeframe)
+            
+            if not history:
+                return html.Div(f"No holdings history available for {trader_name}", className='no-data')
+                
+            # Create a figure with two subplots: total value and holdings breakdown
+            fig = make_subplots(
+                rows=2, 
+                cols=1,
+                subplot_titles=("Total Portfolio Value", "Holdings Breakdown"),
+                vertical_spacing=0.15,
+                row_heights=[0.4, 0.6]
+            )
+            
+            # Extract timestamps and values
+            timestamps = [h['timestamp'] for h in history]
+            total_values = [h['total_value_usdt'] for h in history]
+            usdt_values = [h['balance_usdt'] for h in history]
+            crypto_values = [h['crypto_value_usdt'] for h in history]
+            
+            # Add total value line
+            fig.add_trace(
+                go.Scatter(
+                    x=timestamps,
+                    y=total_values,
+                    mode='lines',
+                    name='Total Value',
+                    line=dict(color='#4CAF50', width=2)
+                ),
+                row=1, 
+                col=1
+            )
+            
+            # Add USDT and crypto value stacked area chart
+            fig.add_trace(
+                go.Scatter(
+                    x=timestamps,
+                    y=usdt_values,
+                    mode='lines',
+                    name='USDT Balance',
+                    line=dict(width=0),
+                    fill='tozeroy',
+                    fillcolor='rgba(33, 150, 243, 0.5)'
+                ),
+                row=1, 
+                col=1
+            )
+            
+            fig.add_trace(
+                go.Scatter(
+                    x=timestamps,
+                    y=[u + c for u, c in zip(usdt_values, crypto_values)],
+                    mode='lines',
+                    name='Crypto Value',
+                    line=dict(width=0),
+                    fill='tonexty',
+                    fillcolor='rgba(76, 175, 80, 0.5)'
+                ),
+                row=1, 
+                col=1
+            )
+            
+            # Add holdings breakdown
+            # Get all unique crypto symbols
+            all_symbols = set()
+            for snapshot in history:
+                all_symbols.update(snapshot['holdings'].keys())
+                
+            # Create a trace for each symbol
+            for symbol in all_symbols:
+                symbol_values = []
+                for snapshot in history:
+                    holdings = snapshot['holdings']
+                    if symbol in holdings:
+                        symbol_values.append(holdings[symbol]['value_usdt'])
+                    else:
+                        symbol_values.append(0)
+                        
+                # Only add trace if there are non-zero values
+                if any(symbol_values):
+                    fig.add_trace(
+                        go.Scatter(
+                            x=timestamps,
+                            y=symbol_values,
+                            mode='lines',
+                            name=symbol,
+                            stackgroup='holdings'  # Stack the areas
+                        ),
+                        row=2, 
+                        col=1
+                    )
+            
+            # Update layout
+            fig.update_layout(
+                template='plotly_dark',
+                height=600,
+                margin=dict(l=10, r=10, t=60, b=10),
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+                xaxis=dict(
+                    title="Time",
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                ),
+                yaxis=dict(
+                    title="Value (USDT)",
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                ),
+                xaxis2=dict(
+                    title="Time",
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                ),
+                yaxis2=dict(
+                    title="Value (USDT)",
+                    gridcolor='rgba(255,255,255,0.1)',
+                    zerolinecolor='rgba(255,255,255,0.1)'
+                )
+            )
+            
+            return dcc.Graph(
+                figure=fig,
+                config={'displayModeBar': False}
+            )
+            
+        except Exception as e:
+            print(f"Error updating holdings history: {str(e)}")
+            return html.Div(f"Error: {str(e)}", className='error-message')
     
     return app
 
