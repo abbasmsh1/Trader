@@ -1,7 +1,7 @@
 import os
 from typing import List, Dict
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from data.market_data import MarketDataFetcher
 from agents.value_investor import ValueInvestor
@@ -27,7 +27,7 @@ class TradingSystem:
         """
         self.data_fetcher = MarketDataFetcher()
         
-        # Default symbols including USDT pairs, coin-to-coin pairs, meme coins, and alt coins
+        # Default symbols including USDT pairs and coin-to-coin pairs
         default_symbols = [
             # Major coins
             'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT',
@@ -57,6 +57,9 @@ class TradingSystem:
         self.last_update = {}
         self.auto_trading_enabled = True  # Enable auto-trading by default
         
+        # Holdings history for each trader
+        self.holdings_history = {agent.name: [] for agent in self.agents}
+        
         # Thread safety
         self.lock = Lock()
         
@@ -66,7 +69,7 @@ class TradingSystem:
         # Make initial BTC purchase for all agents if no state was loaded
         if not self._state_loaded:
             self._make_initial_btc_purchase()
-        
+            
     def _load_state(self):
         """Load saved state from disk if available."""
         self._state_loaded = False
@@ -86,6 +89,9 @@ class TradingSystem:
                         self.agents[i].wallet.balance_usdt = agent_state.get('balance_usdt', 20.0)
                         self.agents[i].wallet.holdings = agent_state.get('holdings', {})
                         self.agents[i].wallet.trades_history = agent_state.get('trades_history', [])
+                
+                # Restore holdings history
+                self.holdings_history = state.get('holdings_history', {agent.name: [] for agent in self.agents})
                 
                 print(f"Loaded saved state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
                 self._state_loaded = True
@@ -115,6 +121,7 @@ class TradingSystem:
                     }
                     for agent in self.agents
                 ],
+                'holdings_history': self.holdings_history,
                 'timestamp': datetime.now()
             }
             
@@ -126,7 +133,7 @@ class TradingSystem:
             print(f"Saved trading state to {state_file}")
         except Exception as e:
             print(f"Error saving state: {str(e)}")
-        
+            
     def _make_initial_btc_purchase(self):
         """Make an initial purchase of BTC for all agents."""
         try:
@@ -419,6 +426,85 @@ class TradingSystem:
             except Exception as e:
                 print(f"Error in trading system run loop: {str(e)}")
                 time.sleep(10)  # Wait a bit before retrying
+    
+    def record_holdings(self):
+        """Record current holdings for each trader."""
+        try:
+            # Get current prices for all symbols
+            current_prices = {}
+            for symbol in self.symbols:
+                try:
+                    if symbol.endswith('/USDT'):
+                        df = self.get_market_data(symbol)
+                        if not df.empty:
+                            base_currency = symbol.split('/')[0]
+                            current_prices[base_currency] = float(df['close'].iloc[-1])
+                except Exception as e:
+                    print(f"Error getting price for {symbol}: {str(e)}")
+            
+            # Record holdings for each agent
+            timestamp = datetime.now()
+            for agent in self.agents:
+                metrics = agent.wallet.get_performance_metrics(current_prices)
+                
+                # Calculate crypto holdings value
+                crypto_value = metrics['total_value_usdt'] - metrics['balance_usdt']
+                
+                # Record holdings snapshot
+                holdings_snapshot = {
+                    'timestamp': timestamp,
+                    'total_value_usdt': metrics['total_value_usdt'],
+                    'balance_usdt': metrics['balance_usdt'],
+                    'crypto_value_usdt': crypto_value,
+                    'holdings': {
+                        symbol: {
+                            'amount': amount,
+                            'price_usdt': current_prices.get(symbol, 0),
+                            'value_usdt': amount * current_prices.get(symbol, 0)
+                        }
+                        for symbol, amount in metrics['holdings'].items()
+                    }
+                }
+                
+                # Add to holdings history
+                self.holdings_history[agent.name].append(holdings_snapshot)
+                
+                # Keep only the last 1000 records to prevent excessive memory usage
+                if len(self.holdings_history[agent.name]) > 1000:
+                    self.holdings_history[agent.name] = self.holdings_history[agent.name][-1000:]
+                    
+            print(f"Recorded holdings for {len(self.agents)} traders at {timestamp}")
+        except Exception as e:
+            print(f"Error recording holdings: {str(e)}")
+            
+    def get_holdings_history(self, agent_name: str, timeframe: str = 'all') -> List[Dict]:
+        """
+        Get holdings history for a specific agent.
+        
+        Args:
+            agent_name (str): Name of the agent
+            timeframe (str): Timeframe to filter (all, day, week, month)
+            
+        Returns:
+            List[Dict]: List of holdings snapshots
+        """
+        if agent_name not in self.holdings_history:
+            return []
+            
+        history = self.holdings_history[agent_name]
+        
+        # Filter by timeframe if needed
+        if timeframe == 'day':
+            cutoff = datetime.now() - timedelta(days=1)
+            history = [h for h in history if h['timestamp'] >= cutoff]
+        elif timeframe == 'week':
+            cutoff = datetime.now() - timedelta(days=7)
+            history = [h for h in history if h['timestamp'] >= cutoff]
+        elif timeframe == 'month':
+            cutoff = datetime.now() - timedelta(days=30)
+            history = [h for h in history if h['timestamp'] >= cutoff]
+            
+        return history
 
 def create_dashboard(trading_system: TradingSystem):
     """
