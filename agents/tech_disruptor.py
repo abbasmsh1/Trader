@@ -12,26 +12,46 @@ class TechDisruptor(BaseAgent):
         """
         super().__init__(
             name=name,
-            personality="Tech Disruptor - Bold, innovative, high-growth focused",
+            personality="Tech Disruptor - Bold, innovative, high-growth focused, contrarian, meme-loving",
             risk_tolerance=0.8,  # High risk tolerance
             timeframe=timeframe
         )
         
+        # Elon Musk's famous quotes and tweets
+        self.quotes = [
+            "The first step is to establish that something is possible; then probability will occur.",
+            "When something is important enough, you do it even if the odds are not in your favor.",
+            "I think it is possible for ordinary people to choose to be extraordinary.",
+            "Some people don't like change, but you need to embrace change if the alternative is disaster.",
+            "Persistence is very important. You should not give up unless you are forced to give up.",
+            "Dogecoin to the moon! 🚀",
+            "I still only own Bitcoin, Doge & Eth btw",
+            "Cryptocurrency is a good idea on many levels and we believe it has a promising future, but this cannot come at great cost to the environment."
+        ]
+        
         # Set Elon Musk-inspired strategy preferences
         self.set_strategy_preferences({
-            'innovation_focus': 0.9,
-            'momentum_trading': 0.8,
-            'trend_following': 0.7,
-            'contrarian_plays': 0.6,
-            'volatility_preference': 0.9
+            'innovation_focus': 0.95,       # Extremely high focus on innovation
+            'momentum_trading': 0.8,        # Strong interest in momentum
+            'trend_following': 0.6,         # Moderate trend following
+            'contrarian_plays': 0.9,        # Very high contrarian tendency
+            'volatility_preference': 0.9,   # Embraces volatility
+            'meme_potential': 0.95,         # Very high interest in meme potential
+            'social_media_influence': 0.9,  # Strong belief in social media impact
+            'meme_coin_interest': 0.9,      # High interest in meme coins (especially DOGE)
+            'alt_coin_interest': 0.7        # Significant interest in innovative alt coins
         })
         
         # Initial market beliefs
         self.update_market_beliefs({
             'time_horizon': 'variable',
-            'preferred_condition': 'high-growth',
-            'market_approach': 'momentum-driven',
-            'volatility_view': 'seeks-opportunity'
+            'preferred_condition': 'disruptive-potential',
+            'market_approach': 'innovation-driven',
+            'volatility_view': 'opportunity-for-gains',
+            'crypto_view': 'future-of-finance',
+            'meme_coin_view': 'entertaining-and-profitable',
+            'social_media_impact': 'extremely-significant',
+            'doge_bias': 'strongly-positive'
         })
         
         # Technical parameters
@@ -39,13 +59,35 @@ class TechDisruptor(BaseAgent):
         self.volatility_window = 20
         self.volume_surge_threshold = 2.0
         self.trend_threshold = 0.05
+        self.social_sentiment_weight = 0.4  # Weight for social media sentiment
+        
+    def get_personality_traits(self) -> Dict[str, str]:
+        """Get personality traits of the agent."""
+        traits = super().get_personality_traits()
+        
+        # Add Musk-specific traits
+        traits['personality'] = "Tech"
+        traits['investment_philosophy'] = "Bet on disruptive technologies and meme potential"
+        traits['famous_quote'] = np.random.choice(self.quotes)
+        traits['risk_approach'] = "High-risk, high-reward, contrarian bets"
+        traits['time_horizon'] = "Variable - can be short-term or long-term depending on conviction"
+        traits['meme_coin_approach'] = "Enthusiastic about DOGE and other meme coins with community"
+        traits['twitter_behavior'] = "Unpredictable, market-moving tweets"
+        
+        return traits
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
         Analyze market data using tech-focused momentum strategy and news sentiment.
         Looks for high momentum, volume surges, and breakout patterns.
+        
+        For meme coins, gives special attention to social sentiment and viral potential.
         """
         df = market_data.copy()
+        symbol = market_data.name if hasattr(market_data, 'name') else 'Unknown'
+        
+        # Special handling for DOGE and meme coins
+        is_meme_coin = any(coin in symbol for coin in ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK'])
         
         # Calculate momentum indicators
         df['RSI'] = ta.momentum.rsi(df['close'], window=self.momentum_window)
@@ -90,7 +132,6 @@ class TechDisruptor(BaseAgent):
         )
         
         # Get news sentiment analysis
-        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
         sentiment = self.analyze_news_sentiment(symbol)
         
         # Adjust innovation score based on news sentiment

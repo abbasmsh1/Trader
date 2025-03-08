@@ -26,7 +26,24 @@ class TradingSystem:
         Initialize the trading system with personality-based agents.
         """
         self.data_fetcher = MarketDataFetcher()
-        self.symbols = symbols or DEFAULT_SYMBOLS
+        
+        # Default symbols including USDT pairs, coin-to-coin pairs, meme coins, and alt coins
+        default_symbols = [
+            # Major coins
+            'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT',
+            
+            # Coin-to-coin pairs
+            'BTC/ETH', 'ETH/BTC', 'BNB/BTC', 'SOL/BTC',
+            
+            # Meme coins
+            'DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT',
+            
+            # Alt coins
+            'DOT/USDT', 'AVAX/USDT', 'LINK/USDT', 'MATIC/USDT', 'XRP/USDT',
+            'ATOM/USDT', 'UNI/USDT', 'AAVE/USDT', 'NEAR/USDT', 'ARB/USDT'
+        ]
+        
+        self.symbols = symbols or default_symbols
         
         # Initialize trading agents with different personalities
         self.agents = [
@@ -43,8 +60,72 @@ class TradingSystem:
         # Thread safety
         self.lock = Lock()
         
-        # Make initial BTC purchase for all agents
-        self._make_initial_btc_purchase()
+        # Load saved state if available
+        self._load_state()
+        
+        # Make initial BTC purchase for all agents if no state was loaded
+        if not self._state_loaded:
+            self._make_initial_btc_purchase()
+        
+    def _load_state(self):
+        """Load saved state from disk if available."""
+        self._state_loaded = False
+        try:
+            state_file = os.path.join(os.path.dirname(__file__), 'data', 'trading_state.pkl')
+            if os.path.exists(state_file):
+                import pickle
+                with open(state_file, 'rb') as f:
+                    state = pickle.load(f)
+                    
+                # Restore signals history
+                self.signals_history = state.get('signals_history', [])
+                
+                # Restore agent wallets
+                for i, agent_state in enumerate(state.get('agents', [])):
+                    if i < len(self.agents):
+                        self.agents[i].wallet.balance_usdt = agent_state.get('balance_usdt', 20.0)
+                        self.agents[i].wallet.holdings = agent_state.get('holdings', {})
+                        self.agents[i].wallet.trades_history = agent_state.get('trades_history', [])
+                
+                print(f"Loaded saved state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
+                self._state_loaded = True
+            else:
+                print("No saved state found, starting fresh")
+        except Exception as e:
+            print(f"Error loading saved state: {str(e)}")
+            
+    def _save_state(self):
+        """Save current state to disk."""
+        try:
+            # Create data directory if it doesn't exist
+            data_dir = os.path.join(os.path.dirname(__file__), 'data')
+            os.makedirs(data_dir, exist_ok=True)
+            
+            state_file = os.path.join(data_dir, 'trading_state.pkl')
+            
+            # Prepare state to save
+            state = {
+                'signals_history': self.signals_history,
+                'agents': [
+                    {
+                        'name': agent.name,
+                        'balance_usdt': agent.wallet.balance_usdt,
+                        'holdings': agent.wallet.holdings,
+                        'trades_history': agent.wallet.trades_history
+                    }
+                    for agent in self.agents
+                ],
+                'timestamp': datetime.now()
+            }
+            
+            # Save to file
+            import pickle
+            with open(state_file, 'wb') as f:
+                pickle.dump(state, f)
+                
+            print(f"Saved trading state to {state_file}")
+        except Exception as e:
+            print(f"Error saving state: {str(e)}")
         
     def _make_initial_btc_purchase(self):
         """Make an initial purchase of BTC for all agents."""
@@ -73,7 +154,11 @@ class TradingSystem:
                         'agent': agent.name,
                         'personality': agent.get_personality_traits()['personality'],
                         'symbol': "BTC/USDT",
-                        'signal': {'action': 'STRONG_BUY', 'confidence': 0.8, 'reason': 'Initial purchase to grow $20 to $100'},
+                        'signal': {
+                            'action': 'STRONG_BUY', 
+                            'confidence': 0.8, 
+                            'reason': 'Initial purchase to grow $20 to $100'
+                        },
                         'risk_tolerance': agent.risk_tolerance,
                         'strategy': agent.get_personality_traits()['strategy_preferences'],
                         'market_view': agent.get_personality_traits()['market_beliefs'],
@@ -117,22 +202,52 @@ class TradingSystem:
             current_time = time.time()
             cache_ttl = SYSTEM_PARAMS.get('cache_ttl', 60)  # 1 minute default TTL
             
-            if (symbol in self.market_data_cache and 
-                symbol in self.last_update and 
-                current_time - self.last_update[symbol] < cache_ttl):
-                print(f"Using cached data for {symbol}")
-                return self.market_data_cache[symbol]
-            
-            print(f"Fetching new data for {symbol}")
-            with self.lock:  # Thread-safe data fetching
-                df = self.data_fetcher.get_historical_data(symbol)
-                if df.empty:
-                    print(f"Error: Empty dataframe received for {symbol}")
-                    return pd.DataFrame()
+            with self.lock:
+                # Check if we have cached data that's still fresh
+                if (symbol in self.market_data_cache and 
+                    symbol in self.last_update and 
+                    current_time - self.last_update[symbol] < cache_ttl):
+                    print(f"Using cached data for {symbol}")
+                    return self.market_data_cache[symbol]
                 
-                print(f"Successfully fetched data for {symbol}: {len(df)} rows")
-                self.market_data_cache[symbol] = df
-                self.last_update[symbol] = current_time
+                # If not, fetch new data
+                print(f"Fetching new data for {symbol}")
+                
+                # For coin-to-coin pairs, we need to calculate the ratio
+                if '/' in symbol and not symbol.endswith('/USDT'):
+                    base, quote = symbol.split('/')
+                    
+                    # Get data for both coins in USDT
+                    base_data = self.data_fetcher.fetch_market_data(f"{base}/USDT")
+                    quote_data = self.data_fetcher.fetch_market_data(f"{quote}/USDT")
+                    
+                    if base_data.empty or quote_data.empty:
+                        print(f"Could not fetch data for {symbol}")
+                        return pd.DataFrame()
+                    
+                    # Ensure both dataframes have the same timestamps
+                    common_index = base_data.index.intersection(quote_data.index)
+                    base_data = base_data.loc[common_index]
+                    quote_data = quote_data.loc[common_index]
+                    
+                    # Calculate the ratio for OHLCV
+                    df = pd.DataFrame(index=common_index)
+                    df['open'] = base_data['open'] / quote_data['open']
+                    df['high'] = base_data['high'] / quote_data['low']  # Max ratio possible
+                    df['low'] = base_data['low'] / quote_data['high']   # Min ratio possible
+                    df['close'] = base_data['close'] / quote_data['close']
+                    df['volume'] = base_data['volume'] * base_data['close']  # Volume in base currency value
+                    
+                    print(f"Successfully calculated {symbol} ratio: {len(df)} rows")
+                else:
+                    # Regular USDT pair
+                    df = self.data_fetcher.fetch_market_data(symbol)
+                    print(f"Successfully fetched data for {symbol}: {len(df)} rows")
+                
+                if not df.empty:
+                    self.market_data_cache[symbol] = df
+                    self.last_update[symbol] = current_time
+                
                 return df
         except Exception as e:
             print(f"Error in get_market_data for {symbol}: {str(e)}")
@@ -151,12 +266,35 @@ class TradingSystem:
             current_price = float(market_data['close'].iloc[-1])
             
             # Create a dictionary of current prices for all crypto assets
-            base_currency = symbol.split('/')[0]  # e.g., 'BTC' from 'BTC/USDT'
-            current_prices = {base_currency: current_price}
+            # For coin-to-coin pairs, we need both coins
+            if '/' in symbol:
+                base_currency, quote_currency = symbol.split('/')
+                
+                # For USDT pairs, the quote is USDT
+                if quote_currency == 'USDT':
+                    current_prices = {base_currency: current_price}
+                else:
+                    # For coin-to-coin pairs, we need to get both prices in USDT
+                    base_usdt_data = self.get_market_data(f"{base_currency}/USDT")
+                    quote_usdt_data = self.get_market_data(f"{quote_currency}/USDT")
+                    
+                    if not base_usdt_data.empty and not quote_usdt_data.empty:
+                        base_price = float(base_usdt_data['close'].iloc[-1])
+                        quote_price = float(quote_usdt_data['close'].iloc[-1])
+                        
+                        current_prices = {
+                            base_currency: base_price,
+                            quote_currency: quote_price
+                        }
+                    else:
+                        current_prices = {}
+            else:
+                # Fallback for any other format
+                current_prices = {}
             
             # Add prices for other symbols in the portfolio
             for other_symbol in self.symbols:
-                if other_symbol != symbol:
+                if other_symbol != symbol and other_symbol.endswith('/USDT'):
                     other_data = self.get_market_data(other_symbol)
                     if not other_data.empty:
                         other_base = other_symbol.split('/')[0]
@@ -171,6 +309,10 @@ class TradingSystem:
                     print(f"Agent {agent.name} analyzing {symbol}")
                     analysis = agent.analyze_market(market_data)
                     signal = agent.generate_signal(analysis)
+                    
+                    # Ensure signal has a reason field
+                    if 'reason' not in signal:
+                        signal['reason'] = f"Signal generated by {agent.name} based on {agent.personality}"
                     
                     # Get wallet metrics to check progress toward $100 goal
                     wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
@@ -198,6 +340,9 @@ class TradingSystem:
                         if trade_executed:
                             print(f"🔄 {agent.name} executed {signal['action']} for {symbol} at ${current_price:.2f}")
                             print(f"   Wallet value: ${total_value:.2f} / $100.00 goal ({total_value/100*100:.1f}%)")
+                            
+                            # Save state after each trade
+                            self._save_state()
                     
                     # Update wallet metrics after trade
                     wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
@@ -209,8 +354,8 @@ class TradingSystem:
                         'symbol': symbol,
                         'signal': signal,
                         'risk_tolerance': agent.risk_tolerance,
-                        'strategy': personality_traits['strategy_preferences'],
-                        'market_view': personality_traits['market_beliefs'],
+                        'strategy': personality_traits,
+                        'market_view': personality_traits.get('market_beliefs', {}),
                         'wallet_metrics': wallet_metrics,
                         'trade_executed': trade_executed,
                         'timestamp': datetime.now().timestamp(),
@@ -240,23 +385,37 @@ class TradingSystem:
             interval (int): Update interval in seconds
         """
         print("Starting trading system...")
+        last_save_time = time.time()
+        save_interval = 300  # Save state every 5 minutes
+        
         while True:
             try:
                 for symbol in self.symbols:
                     print(f"\nProcessing {symbol}...")
                     signals = self.analyze_market(symbol)
-                    with self.lock:
+                    if signals:
+                        # Add to signals history
                         self.signals_history.extend(signals)
-                    
-                    print(f"Generated {len(signals)} signals for {symbol}")
-                    for signal in signals:
-                        print(f"{signal['agent']}: {signal['signal']['action'].upper()} "
-                              f"(Confidence: {signal['signal']['confidence']:.2f})")
+                        # Keep only the most recent 1000 signals
+                        if len(self.signals_history) > 1000:
+                            self.signals_history = self.signals_history[-1000:]
+                
+                # Save state periodically
+                current_time = time.time()
+                if current_time - last_save_time > save_interval:
+                    self._save_state()
+                    last_save_time = current_time
+                    print("Saved trading system state")
+                
+                print(f"Sleeping for {interval} seconds...")
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                print("\nTrading system stopped by user")
+                self._save_state()  # Save state before exiting
+                break
             except Exception as e:
                 print(f"Error in trading system run loop: {str(e)}")
-            
-            print(f"Sleeping for {interval} seconds...")
-            time.sleep(interval)
+                time.sleep(10)  # Wait a bit before retrying
 
 def create_dashboard(trading_system: TradingSystem):
     """
@@ -295,7 +454,7 @@ def create_dashboard(trading_system: TradingSystem):
         # Header
         html.Div([
             html.H1("AI Crypto Trading Dashboard", className='dashboard-title'),
-            html.P("Real-time cryptocurrency trading signals powered by AI", className='dashboard-subtitle')
+            html.P("Trading bots competing to turn $20 into $100", className='dashboard-subtitle')
         ], className='header'),
         
         # Navigation
@@ -304,26 +463,30 @@ def create_dashboard(trading_system: TradingSystem):
             html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
         ], className='nav-container'),
         
-        # Content container
-        html.Div(id='page-content', className='content-container'),
+        # Main content
+        html.Div(id='page-content'),
+        
+        # Memory status indicator
+        html.Div([
+            html.Span("💾", className="icon"),
+            html.Span("Memory system active", id="memory-status-text")
+        ], id="memory-status", className="memory-status"),
         
         # Interval component for auto-refresh
         dcc.Interval(
             id='interval-component',
-            interval=SYSTEM_PARAMS['dashboard_refresh_rate'],
+            interval=30 * 1000,  # 30 seconds
             n_intervals=0
         ),
         
-        # Hidden divs for traders comparison components
-        html.Div([
-            html.Div(id='traders-performance-cards', style={'display': 'none'}),
-            html.Div(id='portfolio-value-chart', style={'display': 'none'}),
-            html.Div(id='holdings-comparison', style={'display': 'none'}),
-            html.Div(id='trade-activity-comparison', style={'display': 'none'})
-        ], style={'display': 'none'})
-    ], className='dashboard')
+        # Interval for memory status updates
+        dcc.Interval(
+            id='memory-save-interval',
+            interval=300 * 1000,  # 5 minutes
+            n_intervals=0
+        )
+    ], className='container')
     
-    # Callback to render the selected tab content
     @app.callback(
         [Output('page-content', 'children'),
          Output('nav-trading-view', 'className'),
@@ -332,13 +495,13 @@ def create_dashboard(trading_system: TradingSystem):
          Input('nav-traders-comparison', 'n_clicks')]
     )
     def render_content(trading_view_clicks, traders_comparison_clicks):
+        """Render the appropriate content based on navigation clicks."""
         ctx = callback_context
         
         if not ctx.triggered:
-            # Default to trading view on initial load
-            return create_trading_view(trading_system), 'nav-button active', 'nav-button'
-            
-        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            button_id = 'nav-trading-view'  # Default view
+        else:
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
         
         if button_id == 'nav-trading-view':
             return create_trading_view(trading_system), 'nav-button active', 'nav-button'
@@ -350,6 +513,10 @@ def create_dashboard(trading_system: TradingSystem):
     
     def create_trading_view(trading_system):
         """Create the main trading view layout."""
+        # Group symbols by type (USDT pairs and coin-to-coin pairs)
+        usdt_pairs = [s for s in trading_system.symbols if s.endswith('/USDT')]
+        coin_pairs = [s for s in trading_system.symbols if not s.endswith('/USDT')]
+        
         return html.Div([
             # Main content
             html.Div([
@@ -357,14 +524,23 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Div([
                     html.Div([
                         html.H3("Trading Controls", className='panel-title'),
-                        html.Label("Select Cryptocurrencies"),
+                        html.Label("Select USDT Pairs"),
                         dcc.Dropdown(
                             id='symbol-multi-dropdown',
                             options=[{'label': s.replace('/USDT', ''), 'value': s} 
-                                    for s in trading_system.symbols],
-                            value=trading_system.symbols[:4],
+                                    for s in usdt_pairs],
+                            value=usdt_pairs[:4],
                             multi=True,
                             className='dropdown'
+                        ),
+                        html.Label("Select Coin-to-Coin Pairs"),
+                        dcc.Dropdown(
+                            id='coin-pair-dropdown',
+                            options=[{'label': s, 'value': s} 
+                                    for s in coin_pairs],
+                            value=coin_pairs[:2] if coin_pairs else [],
+                            multi=True,
+                            className='dropdown coin-pair-dropdown'
                         ),
                         html.Label("Timeframe"),
                         dcc.Dropdown(
@@ -681,14 +857,14 @@ def create_dashboard(trading_system: TradingSystem):
             html.Table([
                 html.Thead(html.Tr([
                     html.Th("Agent"),
+                    html.Th("Quote"),
                     html.Th("Symbol"),
                     html.Th("Action"),
                     html.Th("Confidence"),
                     html.Th("Reason"),
                     html.Th("Wallet Value"),
                     html.Th("Goal Progress"),
-                    html.Th("Trade Status"),
-                    html.Th("Time")
+                    html.Th("Trade Status")
                 ])),
                 html.Tbody([
                     html.Tr([
@@ -696,13 +872,17 @@ def create_dashboard(trading_system: TradingSystem):
                             html.Span(signal['agent'].replace(' AI', ''), className='agent-name'),
                             html.Span(signal['personality'], className=f"agent-badge {signal['personality'].lower()}")
                         ]),
+                        html.Td(
+                            signal.get('strategy', {}).get('famous_quote', 'No quote available'),
+                            className='trader-quote'
+                        ),
                         html.Td(signal['symbol'].replace('/USDT', '')),
                         html.Td(
                             signal['signal']['action'],
                             className=f"action-{signal['signal']['action'].lower()}"
                         ),
                         html.Td(f"{signal['signal']['confidence']:.2f}"),
-                        html.Td(signal['signal']['reason']),
+                        html.Td(signal['signal'].get('reason', 'No reason provided')),
                         html.Td(f"${signal['wallet_metrics']['total_value_usdt']:.2f}"),
                         html.Td([
                             html.Div(className='progress-bar-container', children=[
@@ -718,8 +898,7 @@ def create_dashboard(trading_system: TradingSystem):
                             "⏳ Pending" if signal['signal']['action'] not in ['HOLD', 'WATCH'] else 
                             "⏹️ No Action",
                             className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending' if signal['signal']['action'] not in ['HOLD', 'WATCH'] else 'no-action'}"
-                        ),
-                        html.Td(datetime.fromtimestamp(signal['timestamp']).strftime('%H:%M:%S'))
+                        )
                     ]) for signal in signals
                 ])
             ], className='signals-table-content')
@@ -763,16 +942,22 @@ def create_dashboard(trading_system: TradingSystem):
          Output('signals-table', 'children')],
         [Input('interval-component', 'n_intervals'),
          Input('symbol-multi-dropdown', 'value'),
+         Input('coin-pair-dropdown', 'value'),
          Input('timeframe-dropdown', 'value'),
          Input('indicator-checklist', 'value'),
          Input('chart-style', 'value'),
          Input('layout-radio', 'value')],
         [State('auto-refresh-switch', 'value')]
     )
-    def update_trading_view(n, symbols, timeframe, indicators, chart_style, layout, auto_refresh):
+    def update_trading_view(n, usdt_symbols, coin_symbols, timeframe, indicators, chart_style, layout, auto_refresh):
         """Update the trading view components."""
         print("\nUpdating trading view...")
-        print(f"Symbols: {symbols}")
+        
+        # Combine both symbol types
+        all_symbols = (usdt_symbols or []) + (coin_symbols or [])
+        
+        print(f"USDT Pairs: {usdt_symbols}")
+        print(f"Coin Pairs: {coin_symbols}")
         print(f"Timeframe: {timeframe}")
         print(f"Indicators: {indicators}")
         print(f"Chart style: {chart_style}")
@@ -786,7 +971,7 @@ def create_dashboard(trading_system: TradingSystem):
             print("Auto-refresh disabled")
             raise PreventUpdate
         
-        if not symbols:
+        if not all_symbols:
             print("No symbols selected")
             return [], html.Div("No symbols selected"), html.Div("No signals available")
         
@@ -795,7 +980,7 @@ def create_dashboard(trading_system: TradingSystem):
             charts = []
             market_overview_data = []
             
-            for symbol in symbols:
+            for symbol in all_symbols:
                 try:
                     print(f"Processing {symbol}...")
                     df = trading_system.get_market_data(symbol)
@@ -867,8 +1052,14 @@ def create_dashboard(trading_system: TradingSystem):
                                                name='BB Lower', line=dict(dash='dash')))
                     
                     # Update layout
+                    # For coin-to-coin pairs, show the ratio in the title
+                    if not symbol.endswith('/USDT'):
+                        title = f'{symbol} Ratio Chart'
+                    else:
+                        title = f'{symbol} Price Chart'
+                        
                     fig.update_layout(
-                        title=f'{symbol} Price Chart',
+                        title=title,
                         template='plotly_dark',
                         height=400,
                         xaxis_rangeslider_visible=False,
@@ -895,11 +1086,22 @@ def create_dashboard(trading_system: TradingSystem):
                     # Add market overview data
                     current_price = df['close'].iloc[-1]
                     price_change = ((current_price / df['close'].iloc[-2] - 1) * 100)
+                    
+                    # For coin-to-coin pairs, show the ratio
+                    if not symbol.endswith('/USDT'):
+                        base, quote = symbol.split('/')
+                        display_symbol = f"{base}/{quote} Ratio"
+                        price_format = f"{current_price:.6f}"
+                    else:
+                        display_symbol = symbol.replace('/USDT', '')
+                        price_format = f"${current_price:.2f}"
+                    
                     market_overview_data.append({
-                        'symbol': symbol,
-                        'price': current_price,
+                        'symbol': display_symbol,
+                        'price': price_format,
                         'change': price_change,
-                        'volume': df['volume'].iloc[-1]
+                        'volume': df['volume'].iloc[-1],
+                        'is_ratio': not symbol.endswith('/USDT')
                     })
                     
                 except Exception as e:
@@ -925,13 +1127,13 @@ def create_dashboard(trading_system: TradingSystem):
                     ])),
                     html.Tbody([
                         html.Tr([
-                            html.Td(data['symbol'].replace('/USDT', '')),
-                            html.Td(f"${data['price']:.2f}"),
+                            html.Td(data['symbol']),
+                            html.Td(data['price']),
                             html.Td(
                                 f"{data['change']:.2f}%",
                                 className=f"{'positive' if data['change'] > 0 else 'negative'}"
                             ),
-                            html.Td(f"{data['volume']:,.0f}")
+                            html.Td(f"{data['volume']:,.0f}" if not data['is_ratio'] else "N/A")
                         ]) for data in market_overview_data
                     ])
                 ], className='market-overview-table')
@@ -939,7 +1141,7 @@ def create_dashboard(trading_system: TradingSystem):
             
             # Create signals table
             recent_signals = sorted(
-                [s for s in trading_system.signals_history if s['symbol'] in symbols],
+                [s for s in trading_system.signals_history if s['symbol'] in all_symbols],
                 key=lambda x: x['timestamp'],
                 reverse=True
             )[:10]
@@ -1616,6 +1818,68 @@ def create_dashboard(trading_system: TradingSystem):
                     text-align: center;
                     color: #a8b2c1;
                 }
+                /* Coin-to-coin ratio charts */
+                .coin-ratio-chart {
+                    border: 2px solid #673AB7;
+                    border-radius: 8px;
+                }
+                
+                .coin-ratio-label {
+                    background-color: #673AB7;
+                    color: white;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-size: 0.8em;
+                    margin-left: 5px;
+                }
+                
+                /* Memory system indicator */
+                .memory-status {
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    background-color: rgba(33, 150, 243, 0.8);
+                    color: white;
+                    padding: 10px 15px;
+                    border-radius: 5px;
+                    font-size: 0.9em;
+                    z-index: 1000;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .memory-status .icon {
+                    font-size: 1.2em;
+                }
+                
+                .memory-status.saved {
+                    background-color: rgba(76, 175, 80, 0.8);
+                    animation: fadeOut 3s forwards;
+                    animation-delay: 2s;
+                }
+                
+                @keyframes fadeOut {
+                    from { opacity: 1; }
+                    to { opacity: 0; visibility: hidden; }
+                }
+                
+                /* Dropdown improvements */
+                .dropdown {
+                    margin-bottom: 15px;
+                    width: 100%;
+                }
+                
+                /* Coin pair dropdown */
+                .coin-pair-dropdown .Select-value {
+                    background-color: #673AB7;
+                    border-color: #512DA8;
+                }
+                
+                .coin-pair-dropdown .Select-value-label {
+                    color: white !important;
+                }
             </style>
         </head>
         <body>
@@ -1628,6 +1892,18 @@ def create_dashboard(trading_system: TradingSystem):
         </body>
     </html>
     '''
+    
+    @app.callback(
+        Output('memory-status', 'className'),
+        [Input('memory-save-interval', 'n_intervals')]
+    )
+    def update_memory_status(n):
+        """Update the memory status indicator when state is saved."""
+        if n > 0:
+            # Save the state
+            trading_system._save_state()
+            return "memory-status saved"
+        return "memory-status"
     
     return app
 

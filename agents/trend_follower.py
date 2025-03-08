@@ -5,23 +5,81 @@ import ta
 from .base_agent import BaseAgent
 
 class TrendFollower(BaseAgent):
-    def __init__(self, name: str = "Trend Follower", risk_tolerance: float = 0.6, timeframe: str = '4h'):
+    def __init__(self, name: str = "Technical Trader", risk_tolerance: float = 0.6, timeframe: str = '4h'):
         """
         Initialize the Trend Follower agent.
         This agent follows market trends using moving averages and momentum indicators.
+        Inspired by systematic traders like Paul Tudor Jones and trend-following CTAs.
         """
         super().__init__(
             name=name,
-            personality="Technical Trader - Systematic, trend-focused, data-driven",
+            personality="Technical Trader - Systematic, trend-focused, data-driven, disciplined, unemotional",
             risk_tolerance=risk_tolerance,
             timeframe=timeframe
         )
+        
+        # Technical trader quotes
+        self.quotes = [
+            "The trend is your friend until it bends.",
+            "Cut your losses short and let your winners run.",
+            "Don't fight the tape.",
+            "Plan your trade and trade your plan.",
+            "The market can remain irrational longer than you can remain solvent.",
+            "Risk management is more important than prediction.",
+            "Price action never lies."
+        ]
+        
+        # Technical parameters
         self.short_window = 20
         self.long_window = 50
         self.rsi_period = 14
         self.rsi_overbought = 70.0  # Ensure float
         self.rsi_oversold = 30.0    # Ensure float
+        self.macd_fast = 12
+        self.macd_slow = 26
+        self.macd_signal = 9
+        self.bollinger_window = 20
+        self.bollinger_std = 2.0
         
+        # Set Technical Trader strategy preferences
+        self.set_strategy_preferences({
+            'trend_following': 0.95,       # Very high focus on trends
+            'momentum_trading': 0.8,       # Strong interest in momentum
+            'mean_reversion': 0.6,         # Moderate interest in mean reversion
+            'breakout_trading': 0.85,      # High interest in breakouts
+            'volatility_trading': 0.7,     # Significant interest in volatility
+            'technical_indicators': 0.9,   # Very high reliance on indicators
+            'chart_patterns': 0.8,         # Strong interest in chart patterns
+            'meme_coin_interest': 0.5,     # Moderate interest in meme coins (if they show good technicals)
+            'alt_coin_interest': 0.7       # Significant interest in alt coins with good technical setups
+        })
+        
+        # Initial market beliefs
+        self.update_market_beliefs({
+            'time_horizon': 'medium-term',
+            'preferred_condition': 'trending-markets',
+            'market_approach': 'technical-analysis-driven',
+            'volatility_view': 'opportunity-with-risk-management',
+            'crypto_view': 'tradable-asset-class',
+            'meme_coin_view': 'tradable-if-technical-setup-is-good',
+            'fundamental_value': 'irrelevant-compared-to-price-action'
+        })
+        
+    def get_personality_traits(self) -> Dict[str, str]:
+        """Get personality traits of the agent."""
+        traits = super().get_personality_traits()
+        
+        # Add Technical Trader specific traits
+        traits['personality'] = "Technical"
+        traits['investment_philosophy'] = "Follow price action and technical indicators, ignore fundamentals"
+        traits['famous_quote'] = np.random.choice(self.quotes)
+        traits['risk_approach'] = "Disciplined risk management with strict stop losses"
+        traits['time_horizon'] = "Medium-term, follows trends until they reverse"
+        traits['meme_coin_approach'] = "Agnostic to coin type, trades based on technical patterns only"
+        traits['trading_style'] = "Systematic, rule-based, emotionless"
+        
+        return traits
+    
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
         Analyze market data using trend-following indicators and news sentiment.

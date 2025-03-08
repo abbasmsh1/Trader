@@ -103,4 +103,56 @@ class MarketDataFetcher:
         else:
             limit = 500  # Default limit
             
-        return self.fetch_ohlcv(symbol, timeframe, limit=limit) 
+        return self.fetch_ohlcv(symbol, timeframe, limit=limit)
+    
+    def fetch_market_data(self, symbol: str, timeframe: str = '1h', days: int = 30) -> pd.DataFrame:
+        """
+        Fetch market data for any symbol, including coin-to-coin pairs.
+        
+        Args:
+            symbol (str): Trading pair symbol (e.g., 'BTC/USDT', 'BTC/ETH')
+            timeframe (str): Timeframe for the data
+            days (int): Number of days of historical data to fetch
+            
+        Returns:
+            pd.DataFrame: Market data
+        """
+        try:
+            # For direct exchange pairs, use the exchange API
+            if symbol in self.get_available_pairs():
+                return self.get_historical_data(symbol, timeframe, days)
+            
+            # For coin-to-coin pairs that aren't directly traded, calculate the ratio
+            elif '/' in symbol:
+                base, quote = symbol.split('/')
+                
+                # Get data for both coins in USDT
+                base_data = self.get_historical_data(f"{base}/USDT", timeframe, days)
+                quote_data = self.get_historical_data(f"{quote}/USDT", timeframe, days)
+                
+                if base_data.empty or quote_data.empty:
+                    print(f"Could not fetch data for {symbol}")
+                    return pd.DataFrame()
+                
+                # Ensure both dataframes have the same timestamps
+                common_index = base_data.index.intersection(quote_data.index)
+                base_data = base_data.loc[common_index]
+                quote_data = quote_data.loc[common_index]
+                
+                # Calculate the ratio for OHLCV
+                df = pd.DataFrame(index=common_index)
+                df['open'] = base_data['open'] / quote_data['open']
+                df['high'] = base_data['high'] / quote_data['low']  # Max ratio possible
+                df['low'] = base_data['low'] / quote_data['high']   # Min ratio possible
+                df['close'] = base_data['close'] / quote_data['close']
+                df['volume'] = base_data['volume'] * base_data['close']  # Volume in base currency value
+                
+                return df
+            
+            else:
+                print(f"Invalid symbol format: {symbol}")
+                return pd.DataFrame()
+                
+        except Exception as e:
+            print(f"Error fetching market data for {symbol}: {str(e)}")
+            return pd.DataFrame() 

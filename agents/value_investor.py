@@ -12,26 +12,42 @@ class ValueInvestor(BaseAgent):
         """
         super().__init__(
             name=name,
-            personality="Value Investor - Patient, long-term focused, seeks intrinsic value",
+            personality="Value Investor - Patient, long-term focused, seeks intrinsic value, avoids speculation",
             risk_tolerance=0.3,  # Conservative risk profile
             timeframe=timeframe
         )
         
+        # Warren Buffett's famous quotes
+        self.quotes = [
+            "Be fearful when others are greedy, and greedy when others are fearful.",
+            "Price is what you pay. Value is what you get.",
+            "It's far better to buy a wonderful company at a fair price than a fair company at a wonderful price.",
+            "Our favorite holding period is forever.",
+            "Risk comes from not knowing what you're doing.",
+            "Only buy something that you'd be perfectly happy to hold if the market shut down for 10 years."
+        ]
+        
         # Set Warren Buffett-inspired strategy preferences
         self.set_strategy_preferences({
-            'value_focus': 0.8,
-            'trend_following': 0.2,
-            'momentum': 0.1,
-            'mean_reversion': 0.7,
-            'volatility_preference': 0.3
+            'value_focus': 0.9,            # Strong emphasis on intrinsic value
+            'trend_following': 0.2,        # Limited interest in trends
+            'momentum': 0.1,               # Very low interest in momentum
+            'mean_reversion': 0.7,         # Believes in reversion to fair value
+            'volatility_preference': 0.2,  # Prefers stability over volatility
+            'speculation': 0.0,            # Avoids pure speculation
+            'meme_coin_interest': 0.0,     # No interest in meme coins
+            'alt_coin_interest': 0.3       # Limited interest in established alt coins
         })
         
         # Initial market beliefs
         self.update_market_beliefs({
-            'time_horizon': 'long-term',
+            'time_horizon': 'very-long-term',
             'preferred_condition': 'undervalued',
             'market_approach': 'fundamental-driven',
-            'volatility_view': 'prefers-stability'
+            'volatility_view': 'prefers-stability',
+            'crypto_view': 'skeptical-but-open',
+            'meme_coin_view': 'avoid-completely',
+            'innovation_view': 'cautious-adoption'
         })
         
         # Technical parameters
@@ -39,6 +55,20 @@ class ValueInvestor(BaseAgent):
         self.ma_medium = 50  # 50-day moving average for medium-term trend
         self.volume_threshold = 1.5  # Volume increase threshold
         
+    def get_personality_traits(self) -> Dict[str, str]:
+        """Get personality traits of the agent."""
+        traits = super().get_personality_traits()
+        
+        # Add Buffett-specific traits
+        traits['personality'] = "Value"
+        traits['investment_philosophy'] = "Buy and hold quality assets at reasonable prices"
+        traits['famous_quote'] = np.random.choice(self.quotes)
+        traits['risk_approach'] = "Conservative, focuses on capital preservation"
+        traits['time_horizon'] = "Very long-term, prefers to hold indefinitely"
+        traits['meme_coin_approach'] = "Avoids speculative assets without intrinsic value"
+        
+        return traits
+    
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
         Analyze market data using value investing principles and news sentiment.
