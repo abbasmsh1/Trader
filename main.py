@@ -153,13 +153,31 @@ def create_dashboard(trading_system: TradingSystem):
         # Hidden div for storing the current view state
         html.Div(id='current-view', style={'display': 'none'}),
         
-        # Add placeholder divs for wallet components
-        html.Div(id='wallet-overview-cards', style={'display': 'none'}),
-        html.Div(id='portfolio-performance', style={'display': 'none'}),
-        html.Div(id='trade-history-table', style={'display': 'none'}),
-        
-        # Add the agent selector dropdown to the initial layout
-        dcc.Dropdown(id='agent-selector', style={'display': 'none'}),
+        # Add properly structured wallet components with correct IDs
+        html.Div([
+            # Wallet Overview Section
+            html.Div([
+                html.H2("Agent Wallets Overview", className='section-title'),
+                html.Div(id='wallet-overview-cards', className='wallet-overview-grid')
+            ], className='wallet-section'),
+            
+            # Portfolio Performance Section
+            html.Div([
+                html.H2("Portfolio Performance", className='section-title'),
+                dcc.Dropdown(
+                    id='agent-selector',
+                    options=[],  # Will be populated when needed
+                    className='agent-dropdown'
+                ),
+                html.Div(id='portfolio-performance', className='performance-container')
+            ], className='portfolio-section'),
+            
+            # Trade History Section
+            html.Div([
+                html.H2("Trade History", className='section-title'),
+                html.Div(id='trade-history-table', className='trade-history-container')
+            ], className='trade-history-section')
+        ], id='wallet-view-container', style={'display': 'none'}),
         
         # Refresh interval
         dcc.Interval(
