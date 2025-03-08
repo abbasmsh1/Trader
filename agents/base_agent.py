@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 from typing import Dict, List, Optional, Literal, Any
 import pandas as pd
-from data.market_news import MarketNewsFetcher
 from data.wallet import Wallet
 
 # Define trading actions as constants
@@ -36,7 +35,6 @@ class BaseAgent(ABC):
         self.trading_history: List[Dict] = []
         self.strategy_preferences: Dict[str, float] = {}
         self.market_beliefs: Dict[str, str] = {}
-        self.news_fetcher = MarketNewsFetcher()
         self.wallet = Wallet(initial_balance_usdt=20.0)
         
         # Action thresholds for different signal types
@@ -201,92 +199,60 @@ class BaseAgent(ABC):
     def __str__(self) -> str:
         return f"{self.name} ({self.personality}) - Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe}"
     
-    def analyze_news_sentiment(self, symbol: str) -> Dict:
-        """
-        Analyze market news sentiment.
-        
-        Args:
-            symbol (str): Cryptocurrency symbol
-            
-        Returns:
-            Dict: News sentiment analysis results
-        """
-        return self.news_fetcher.get_market_sentiment(symbol, self.timeframe)
-        
-    def adjust_confidence(self, base_confidence: float, sentiment: Dict) -> float:
-        """
-        Adjust signal confidence based on news sentiment.
-        
-        Args:
-            base_confidence (float): Base confidence from technical analysis
-            sentiment (Dict): News sentiment analysis results
-            
-        Returns:
-            float: Adjusted confidence score
-        """
-        if sentiment['article_count'] == 0:
-            return base_confidence
-            
-        # Calculate sentiment impact (0.0 to 0.3)
-        sentiment_impact = min(0.3, sentiment['confidence'] * abs(sentiment['sentiment_score']))
-        
-        # Adjust confidence based on sentiment alignment
-        if sentiment['sentiment_score'] > 0 and base_confidence > 0.5:
-            # Positive sentiment reinforces bullish signal
-            return min(1.0, base_confidence + sentiment_impact)
-        elif sentiment['sentiment_score'] < 0 and base_confidence < 0.5:
-            # Negative sentiment reinforces bearish signal
-            return max(0.0, base_confidence - sentiment_impact)
-        else:
-            # Sentiment contradicts signal, reduce confidence
-            return base_confidence * (1.0 - sentiment_impact)
-            
-    def get_news_commentary(self, sentiment: Dict) -> str:
-        """
-        Generate commentary about market news sentiment.
-        
-        Args:
-            sentiment (Dict): News sentiment analysis results
-            
-        Returns:
-            str: News-based market commentary
-        """
-        if sentiment['article_count'] == 0:
-            return "No recent news available."
-            
-        sentiment_str = sentiment['overall_sentiment'].capitalize()
-        confidence_str = "High" if sentiment['confidence'] > 0.7 else "Moderate" if sentiment['confidence'] > 0.4 else "Low"
-        
-        return f"Market news sentiment: {sentiment_str} ({confidence_str} confidence). " + \
-               f"Based on {sentiment['article_count']} recent articles " + \
-               f"({sentiment['positive_ratio']*100:.0f}% positive, " + \
-               f"{sentiment['negative_ratio']*100:.0f}% negative)."
-    
     def execute_trade(self, symbol: str, signal: Dict[str, Any], current_price: float) -> bool:
-        """Execute a trade based on the signal."""
-        action = signal['action'].upper()
-        confidence = signal['confidence']
+        """
+        Execute a trade based on the signal.
         
-        # Calculate trade amount based on confidence and risk tolerance
-        max_trade_amount = self.wallet.balance_usdt * self.risk_tolerance
-        trade_amount = max_trade_amount * confidence
+        Args:
+            symbol (str): Trading pair symbol
+            signal (Dict): Trading signal with action and confidence
+            current_price (float): Current price of the asset
+            
+        Returns:
+            bool: Whether the trade was executed successfully
+        """
+        action = signal.get('action', 'HOLD')
+        confidence = signal.get('confidence', 0.5)
         
-        # Minimum trade amount of 5 USDT
-        if trade_amount < 5.0:
-            trade_amount = 5.0
+        # Skip if action is HOLD or WATCH
+        if action in ['HOLD', 'WATCH']:
+            return False
             
-        if action in ['STRONG_BUY', 'BUY', 'SCALE_IN']:
-            # Buy with available funds
-            return self.wallet.execute_buy(symbol, trade_amount, current_price)
+        # Determine trade direction and size
+        is_buy = action in ['STRONG_BUY', 'BUY', 'SCALE_IN']
+        is_sell = action in ['STRONG_SELL', 'SELL', 'SCALE_OUT']
+        
+        if is_buy:
+            # Calculate position size based on available USDT
+            available_usdt = self.wallet.get_balance('USDT')
+            position_size_usdt = self.calculate_position_size(signal, available_usdt)
             
-        elif action in ['STRONG_SELL', 'SELL', 'SCALE_OUT']:
-            # Sell a portion of holdings based on confidence
-            position_size = self.wallet.get_position_size(symbol)
-            sell_amount = position_size * confidence
-            return self.wallet.execute_sell(symbol, sell_amount, current_price)
+            if position_size_usdt > 0:
+                # Convert to asset amount
+                asset_amount = position_size_usdt / current_price
+                return self.wallet.execute_buy(symbol, asset_amount, current_price)
+                
+        elif is_sell:
+            # Calculate position size based on available asset
+            asset_symbol = symbol.split('/')[0]
+            available_asset = self.wallet.get_balance(asset_symbol)
             
-        return False  # No trade for WATCH or HOLD
+            if available_asset > 0:
+                # Determine percentage to sell based on action
+                sell_percentage = 1.0 if action == 'STRONG_SELL' else 0.5 if action == 'SCALE_OUT' else 0.75
+                asset_amount = available_asset * sell_percentage
+                return self.wallet.execute_sell(symbol, asset_amount, current_price)
+                
+        return False
         
     def get_wallet_metrics(self, current_prices: Dict[str, float]) -> Dict:
-        """Get wallet performance metrics."""
-        return self.wallet.get_performance_metrics(current_prices) 
+        """
+        Get wallet metrics including balance, value, and performance.
+        
+        Args:
+            current_prices (Dict[str, float]): Current prices of assets
+            
+        Returns:
+            Dict: Wallet metrics
+        """
+        return self.wallet.get_metrics(current_prices) 

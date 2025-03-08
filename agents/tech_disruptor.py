@@ -42,74 +42,84 @@ class TechDisruptor(BaseAgent):
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
-        Analyze market data using tech-focused momentum strategy and news sentiment.
-        Looks for high momentum, volume surges, and breakout patterns.
+        Analyze market data using tech-focused metrics.
+        Looks for momentum, breakouts, and innovation indicators.
         """
         df = market_data.copy()
         
-        # Calculate momentum indicators
-        df['RSI'] = ta.momentum.rsi(df['close'], window=self.momentum_window)
-        df['MACD'] = ta.trend.macd_diff(df['close'])
+        # Calculate technical indicators
+        df['RSI'] = ta.momentum.rsi(df['close'], window=14)
+        df['MACD'] = ta.trend.macd(df['close'])
+        df['MACD_signal'] = ta.trend.macd_signal(df['close'])
+        df['MACD_diff'] = ta.trend.macd_diff(df['close'])
+        df['BB_upper'] = ta.volatility.bollinger_hband(df['close'])
+        df['BB_lower'] = ta.volatility.bollinger_lband(df['close'])
         
-        # Calculate volume metrics
-        df['volume_ma'] = ta.trend.sma_indicator(df['volume'], window=20)
+        # Calculate volume surge
+        df['volume_ma'] = df['volume'].rolling(window=20).mean()
         df['volume_surge'] = df['volume'] / df['volume_ma']
         
-        # Calculate volatility and momentum metrics
-        df['volatility'] = df['close'].pct_change().rolling(window=self.volatility_window).std()
-        df['momentum'] = df['close'].pct_change(periods=self.momentum_window)
+        # Calculate momentum
+        df['momentum'] = df['close'].pct_change(periods=5)
         
-        # Get latest data
-        latest = df.iloc[-1]
+        # Calculate volatility
+        df['volatility'] = df['close'].pct_change().rolling(window=10).std()
         
-        # Ensure numeric values and handle NaN
-        rsi = float(latest['RSI']) if pd.notnull(latest['RSI']) else 50.0
-        macd = float(latest['MACD']) if pd.notnull(latest['MACD']) else 0.0
-        volume_surge = float(latest['volume_surge']) if pd.notnull(latest['volume_surge']) else 1.0
-        momentum = float(latest['momentum']) if pd.notnull(latest['momentum']) else 0.0
-        volatility = float(latest['volatility']) if pd.notnull(latest['volatility']) else 0.0
-        close_price = float(latest['close']) if pd.notnull(latest['close']) else 0.0
+        # Get current values
+        close_price = float(df['close'].iloc[-1])
+        rsi = float(df['RSI'].iloc[-1])
+        macd = float(df['MACD'].iloc[-1])
+        macd_signal = float(df['MACD_signal'].iloc[-1])
+        macd_diff = float(df['MACD_diff'].iloc[-1])
+        bb_upper = float(df['BB_upper'].iloc[-1])
+        bb_lower = float(df['BB_lower'].iloc[-1])
+        volume_surge = float(df['volume_surge'].iloc[-1])
+        momentum = float(df['momentum'].iloc[-1])
+        volatility = float(df['volatility'].iloc[-1])
         
-        # Calculate trend and momentum metrics
-        price_momentum = momentum
-        volume_momentum = volume_surge
-        trend_strength = macd / (df['MACD'].std() if df['MACD'].std() > 0 else 1.0)
+        # Calculate trend strength (0 to 1)
+        trend_strength = min(1.0, max(0.0, abs(momentum) * 10))
         
-        # Identify potential breakout patterns
-        is_breakout = (
-            rsi > 70 and
-            volume_surge > self.volume_surge_threshold and
-            price_momentum > self.trend_threshold
+        # Determine if there's a breakout
+        is_breakout = (close_price > bb_upper) or (volume_surge > 2.0 and momentum > 0.05)
+        
+        # Calculate innovation score (proxy for technological advancement)
+        innovation_score = 0.5 + (0.5 * (
+            (0.4 * (rsi / 100)) +  # RSI component
+            (0.3 * (1 if macd > macd_signal else -1) * min(1.0, abs(macd_diff) * 5)) +  # MACD component
+            (0.3 * min(1.0, volume_surge / 3))  # Volume component
+        ))
+        
+        # Calculate overall confidence
+        confidence = (
+            innovation_score * 0.5 +  # Innovation component
+            trend_strength * 0.3 +  # Trend component
+            (1.0 if is_breakout else 0.0) * 0.2  # Breakout component
         )
         
-        # Calculate innovation score (based on momentum and volume)
-        innovation_score = (
-            (rsi / 100) * 0.3 +
-            (min(volume_surge / 3, 1)) * 0.3 +
-            (min(abs(price_momentum) * 10, 1)) * 0.4
-        )
+        # Determine trend direction
+        trend_direction = 1 if momentum > 0 else -1
         
-        # Get news sentiment analysis
-        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
-        sentiment = self.analyze_news_sentiment(symbol)
-        
-        # Adjust innovation score based on news sentiment
-        if sentiment['article_count'] > 0:
-            innovation_score = innovation_score * (1 + sentiment['sentiment_score'] * 0.2)
-        
-        return {
-            'price': close_price,
+        # Prepare analysis results
+        analysis = {
+            'current_price': close_price,
             'rsi': rsi,
             'macd': macd,
+            'macd_signal': macd_signal,
+            'macd_diff': macd_diff,
+            'bb_upper': bb_upper,
+            'bb_lower': bb_lower,
             'volume_surge': volume_surge,
-            'momentum': float(price_momentum),
-            'trend_strength': float(trend_strength),
-            'is_breakout': bool(is_breakout),
-            'innovation_score': float(innovation_score),
+            'momentum': momentum,
             'volatility': volatility,
-            'sentiment': sentiment,
-            'timestamp': latest.name
+            'trend_strength': trend_strength,
+            'is_breakout': is_breakout,
+            'innovation_score': innovation_score,
+            'confidence': confidence,
+            'trend_direction': trend_direction
         }
+        
+        return analysis
     
     def generate_signal(self, analysis: Dict) -> Dict:
         """
@@ -118,17 +128,13 @@ class TechDisruptor(BaseAgent):
         """
         signal = {
             'action': 'HOLD',
-            'price': float(analysis['price']),
-            'confidence': 0.0,
+            'price': float(analysis['current_price']),
+            'confidence': float(analysis['confidence']),
             'timestamp': analysis['timestamp']
         }
         
         # Base confidence on momentum and innovation metrics
-        base_confidence = min(
-            float(analysis['innovation_score']) * 0.6 +
-            abs(float(analysis['trend_strength'])) * 0.4,
-            1.0
-        )
+        base_confidence = float(analysis['confidence'])
         
         # Adjust confidence based on news sentiment
         adjusted_confidence = self.adjust_confidence(base_confidence, analysis['sentiment'])

@@ -17,80 +17,84 @@ class TrendFollower(BaseAgent):
             timeframe=timeframe
         )
         self.short_window = 20
-        self.long_window = 50
+        self.medium_window = 50
+        self.long_window = 100
         self.rsi_period = 14
         self.rsi_overbought = 70.0  # Ensure float
         self.rsi_oversold = 30.0    # Ensure float
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
-        Analyze market data using trend-following indicators and news sentiment.
-        
-        Args:
-            market_data (pd.DataFrame): Historical market data with OHLCV
-            
-        Returns:
-            Dict: Analysis results including trend direction and strength
+        Analyze market data using trend following principles.
+        Looks for strong trends and momentum.
         """
         df = market_data.copy()
         
         # Calculate moving averages
-        df['SMA_short'] = ta.trend.sma_indicator(df['close'], self.short_window)
-        df['SMA_long'] = ta.trend.sma_indicator(df['close'], self.long_window)
+        df['SMA_short'] = ta.trend.sma_indicator(df['close'], window=self.short_window)
+        df['SMA_medium'] = ta.trend.sma_indicator(df['close'], window=self.medium_window)
+        df['SMA_long'] = ta.trend.sma_indicator(df['close'], window=self.long_window)
         
-        # Calculate RSI
-        df['RSI'] = ta.momentum.rsi(df['close'], self.rsi_period)
+        # Calculate momentum indicators
+        df['RSI'] = ta.momentum.rsi(df['close'], window=self.rsi_period)
+        df['MACD'] = ta.trend.macd_diff(df['close'])
         
-        # Calculate MACD
-        macd = ta.trend.MACD(df['close'])
-        df['MACD'] = macd.macd()
-        df['MACD_signal'] = macd.macd_signal()
+        # Calculate ADX for trend strength
+        df['ADX'] = ta.trend.adx(df['high'], df['low'], df['close'])
         
-        # Get latest values
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
+        # Get current values
+        close_price = float(df['close'].iloc[-1])
+        sma_short = float(df['SMA_short'].iloc[-1])
+        sma_medium = float(df['SMA_medium'].iloc[-1])
+        sma_long = float(df['SMA_long'].iloc[-1])
+        rsi = float(df['RSI'].iloc[-1])
+        macd = float(df['MACD'].iloc[-1])
+        adx = float(df['ADX'].iloc[-1])
         
-        # Ensure numeric values and handle NaN
-        sma_short = float(latest['SMA_short']) if pd.notnull(latest['SMA_short']) else 0.0
-        sma_long = float(latest['SMA_long']) if pd.notnull(latest['SMA_long']) else 0.0
-        rsi = float(latest['RSI']) if pd.notnull(latest['RSI']) else 50.0
-        macd_current = float(latest['MACD']) if pd.notnull(latest['MACD']) else 0.0
-        macd_signal = float(latest['MACD_signal']) if pd.notnull(latest['MACD_signal']) else 0.0
-        macd_prev = float(prev['MACD']) if pd.notnull(prev['MACD']) else 0.0
-        macd_signal_prev = float(prev['MACD_signal']) if pd.notnull(prev['MACD_signal']) else 0.0
+        # Calculate trend metrics
+        short_medium_trend = sma_short - sma_medium
+        medium_long_trend = sma_medium - sma_long
         
-        # Determine trend direction and strength
-        trend_direction = 1 if sma_short > sma_long else -1
-        trend_strength = abs(sma_short - sma_long) / float(latest['close'])
+        # Determine trend direction (1 for up, -1 for down, 0 for sideways)
+        if short_medium_trend > 0 and medium_long_trend > 0:
+            trend_direction = 1  # Strong uptrend
+        elif short_medium_trend < 0 and medium_long_trend < 0:
+            trend_direction = -1  # Strong downtrend
+        elif short_medium_trend > 0 and medium_long_trend < 0:
+            trend_direction = 0.5  # Potential trend reversal (up)
+        elif short_medium_trend < 0 and medium_long_trend > 0:
+            trend_direction = -0.5  # Potential trend reversal (down)
+        else:
+            trend_direction = 0  # No clear trend
         
-        # Check for MACD crossover
-        macd_crossover = (
-            (macd_current > macd_signal and macd_prev <= macd_signal_prev) or
-            (macd_current < macd_signal and macd_prev >= macd_signal_prev)
+        # Calculate trend strength (0 to 1)
+        trend_strength = min(1.0, adx / 50.0)  # ADX above 25 indicates strong trend
+        
+        # Calculate momentum alignment with trend
+        momentum_alignment = 1.0 if (trend_direction > 0 and rsi > 50) or (trend_direction < 0 and rsi < 50) else 0.5
+        
+        # Calculate overall confidence
+        confidence = (
+            trend_strength * 0.6 +  # Trend strength component
+            momentum_alignment * 0.4  # Momentum alignment component
         )
         
-        # Get news sentiment analysis
-        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
-        sentiment = self.analyze_news_sentiment(symbol)
-        
-        # Adjust trend strength based on news sentiment
-        if sentiment['article_count'] > 0:
-            # Strengthen or weaken trend based on sentiment alignment
-            if (trend_direction > 0 and sentiment['sentiment_score'] > 0) or \
-               (trend_direction < 0 and sentiment['sentiment_score'] < 0):
-                trend_strength *= (1 + abs(sentiment['sentiment_score']) * 0.2)
-            else:
-                trend_strength *= (1 - abs(sentiment['sentiment_score']) * 0.1)
-        
-        return {
+        # Prepare analysis results
+        analysis = {
+            'current_price': close_price,
+            'sma_short': sma_short,
+            'sma_medium': sma_medium,
+            'sma_long': sma_long,
+            'rsi': rsi,
+            'macd': macd,
+            'adx': adx,
             'trend_direction': trend_direction,
-            'trend_strength': float(trend_strength),
-            'rsi': float(rsi),
-            'macd_crossover': bool(macd_crossover),
-            'price': float(latest['close']),
-            'sentiment': sentiment,
-            'timestamp': latest.name
+            'trend_strength': trend_strength,
+            'momentum_alignment': momentum_alignment,
+            'confidence': confidence
         }
+        
+        return analysis
     
     def generate_signal(self, analysis: Dict) -> Dict:
         """
@@ -104,71 +108,63 @@ class TrendFollower(BaseAgent):
         """
         signal = {
             'action': 'HOLD',
-            'price': float(analysis['price']),
-            'confidence': 0.0,
+            'price': float(analysis['current_price']),
+            'confidence': float(analysis['confidence']),
             'timestamp': analysis['timestamp']
         }
-        
-        # Calculate base confidence from trend strength
-        base_confidence = min(float(analysis['trend_strength']) * 10, 1.0)
-        
-        # Adjust confidence based on news sentiment
-        adjusted_confidence = self.adjust_confidence(base_confidence, analysis['sentiment'])
         
         # Strong uptrend with confirmation and positive news
         if (analysis['trend_direction'] > 0 and
             float(analysis['rsi']) < self.rsi_overbought - 10 and
-            analysis['macd_crossover'] and
-            base_confidence > 0.8 and
-            analysis['sentiment']['sentiment_score'] > 0.2):
+            analysis['momentum_alignment'] > 0.8 and
+            analysis['confidence'] > 0.8):
             
             signal['action'] = 'STRONG_BUY'
-            signal['confidence'] = adjusted_confidence * 0.95
+            signal['confidence'] = analysis['confidence'] * 0.95
             
         # Regular uptrend entry
         elif (analysis['trend_direction'] > 0 and
               float(analysis['rsi']) < self.rsi_overbought and
-              analysis['macd_crossover']):
+              analysis['momentum_alignment'] > 0.5):
             
             signal['action'] = 'BUY'
-            signal['confidence'] = adjusted_confidence * 0.85
+            signal['confidence'] = analysis['confidence'] * 0.85
             
         # Building position in uptrend
         elif (analysis['trend_direction'] > 0 and
               float(analysis['rsi']) < self.rsi_overbought + 5):
             
             signal['action'] = 'SCALE_IN'
-            signal['confidence'] = adjusted_confidence * 0.75
+            signal['confidence'] = analysis['confidence'] * 0.75
             
         # Strong downtrend with confirmation and negative news
         elif (analysis['trend_direction'] < 0 and
               float(analysis['rsi']) > self.rsi_oversold + 10 and
-              analysis['macd_crossover'] and
-              base_confidence > 0.8 and
-              analysis['sentiment']['sentiment_score'] < -0.2):
+              analysis['momentum_alignment'] < 0.2 and
+              analysis['confidence'] > 0.8):
             
             signal['action'] = 'STRONG_SELL'
-            signal['confidence'] = adjusted_confidence * 0.9
+            signal['confidence'] = analysis['confidence'] * 0.9
             
         # Regular downtrend exit
         elif (analysis['trend_direction'] < 0 and
               float(analysis['rsi']) > self.rsi_oversold and
-              analysis['macd_crossover']):
+              analysis['momentum_alignment'] < 0.5):
             
             signal['action'] = 'SELL'
-            signal['confidence'] = adjusted_confidence * 0.8
+            signal['confidence'] = analysis['confidence'] * 0.8
             
         # Reducing position in downtrend
         elif (analysis['trend_direction'] < 0 and
               float(analysis['rsi']) > self.rsi_oversold - 5):
             
             signal['action'] = 'SCALE_OUT'
-            signal['confidence'] = adjusted_confidence * 0.7
+            signal['confidence'] = analysis['confidence'] * 0.7
             
         # Monitoring conditions
         elif abs(analysis['trend_direction']) < 0.5:
             signal['action'] = 'WATCH'
-            signal['confidence'] = adjusted_confidence * 0.6
+            signal['confidence'] = analysis['confidence'] * 0.6
         
         # Add technical analysis commentary with news sentiment
         signal['commentary'] = self._generate_technical_commentary(analysis, signal['action'])
