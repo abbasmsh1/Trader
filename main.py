@@ -1258,6 +1258,11 @@ def create_dashboard(trading_system):
     
     return app
 
+def run_dashboard(trading_system):
+    """Run the spot trading dashboard."""
+    app = create_dashboard(trading_system)
+    app.run_server(debug=False, host='0.0.0.0', port=8050)
+
 if __name__ == '__main__':
     # Create trading system instance
     trading_system = TradingSystem()
@@ -1268,5 +1273,4 @@ if __name__ == '__main__':
     trading_thread.start()
     
     # Create and run the dashboard
-    app = create_dashboard(trading_system)
-    app.run_server(debug=True) 
+    run_dashboard(trading_system) 

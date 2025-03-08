@@ -1157,4 +1157,9 @@ def create_futures_dashboard(trading_system):
             print(f"Error resetting traders: {str(e)}")
             return "Error resetting traders"
     
-    return app 
+    return app
+
+def run_futures_dashboard(trading_system):
+    """Run the futures trading dashboard."""
+    app = create_futures_dashboard(trading_system)
+    app.run_server(debug=False, host='0.0.0.0', port=8051) 
