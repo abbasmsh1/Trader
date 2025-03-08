@@ -95,12 +95,16 @@ def create_dashboard(trading_system: TradingSystem):
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}]
     )
     
-    # Define colors
-    colors = {
-        'background': '#1f2630',
-        'text': '#ffffff',
-        'grid': '#283442',
-        'panel': '#2b3c4e'
+    # Define colors for different actions
+    action_colors = {
+        'STRONG_BUY': '#00ff00',    # Bright green
+        'BUY': '#4caf50',           # Regular green
+        'SCALE_IN': '#8bc34a',      # Light green
+        'WATCH': '#ffc107',         # Amber
+        'HOLD': '#9e9e9e',          # Grey
+        'SCALE_OUT': '#ff9800',     # Orange
+        'SELL': '#f44336',          # Red
+        'STRONG_SELL': '#d32f2f'    # Dark red
     }
     
     app.layout = html.Div([
@@ -1010,6 +1014,147 @@ def create_dashboard(trading_system: TradingSystem):
                 
                 .signal-commentary {
                     animation: float 3s ease-in-out infinite;
+                }
+                
+                /* Action-specific styles */
+                .signal-strong_buy {
+                    background-color: rgba(0, 255, 0, 0.2);
+                    color: #00ff00;
+                    font-weight: bold;
+                    border: 1px solid #00ff00;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    animation: pulse-green 2s infinite;
+                }
+                
+                .signal-buy {
+                    background-color: rgba(76, 175, 80, 0.2);
+                    color: #4caf50;
+                    font-weight: bold;
+                    border: 1px solid #4caf50;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-scale_in {
+                    background-color: rgba(139, 195, 74, 0.2);
+                    color: #8bc34a;
+                    font-weight: bold;
+                    border: 1px solid #8bc34a;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-watch {
+                    background-color: rgba(255, 193, 7, 0.2);
+                    color: #ffc107;
+                    font-weight: bold;
+                    border: 1px solid #ffc107;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-hold {
+                    background-color: rgba(158, 158, 158, 0.2);
+                    color: #9e9e9e;
+                    font-weight: bold;
+                    border: 1px solid #9e9e9e;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-scale_out {
+                    background-color: rgba(255, 152, 0, 0.2);
+                    color: #ff9800;
+                    font-weight: bold;
+                    border: 1px solid #ff9800;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-sell {
+                    background-color: rgba(244, 67, 54, 0.2);
+                    color: #f44336;
+                    font-weight: bold;
+                    border: 1px solid #f44336;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                
+                .signal-strong_sell {
+                    background-color: rgba(211, 47, 47, 0.2);
+                    color: #d32f2f;
+                    font-weight: bold;
+                    border: 1px solid #d32f2f;
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                    animation: pulse-red 2s infinite;
+                }
+                
+                /* Animations */
+                @keyframes pulse-green {
+                    0% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(0, 255, 0, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(0, 255, 0, 0); }
+                }
+                
+                @keyframes pulse-red {
+                    0% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0.4); }
+                    70% { box-shadow: 0 0 0 10px rgba(211, 47, 47, 0); }
+                    100% { box-shadow: 0 0 0 0 rgba(211, 47, 47, 0); }
+                }
+                
+                /* Signal commentary styles */
+                .signal-commentary {
+                    font-style: italic;
+                    padding: 8px;
+                    border-radius: 4px;
+                    background: rgba(33, 33, 33, 0.2);
+                    margin: 4px 0;
+                    transition: all 0.3s ease;
+                    animation: float 3s ease-in-out infinite;
+                }
+                
+                .signal-commentary:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+                }
+                
+                @keyframes float {
+                    0% { transform: translateY(0px); }
+                    50% { transform: translateY(-5px); }
+                    100% { transform: translateY(0px); }
+                }
+                
+                /* Confidence bar styles */
+                .confidence-container {
+                    width: 100%;
+                    background: rgba(33, 33, 33, 0.2);
+                    border-radius: 4px;
+                    overflow: hidden;
+                    position: relative;
+                }
+                
+                .confidence-bar {
+                    height: 4px;
+                    background: linear-gradient(90deg, #4caf50, #ffc107, #f44336);
+                    transition: width 0.3s ease;
+                }
+                
+                /* Agent personality badges */
+                .agent-warren {
+                    background: rgba(76, 175, 80, 0.2);
+                    color: #4caf50;
+                }
+                
+                .agent-elon {
+                    background: rgba(33, 150, 243, 0.2);
+                    color: #2196f3;
+                }
+                
+                .agent-technical {
+                    background: rgba(156, 39, 176, 0.2);
+                    color: #9c27b0;
                 }
             </style>
         </head>

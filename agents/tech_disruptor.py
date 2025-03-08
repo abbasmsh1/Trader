@@ -101,7 +101,7 @@ class TechDisruptor(BaseAgent):
         Focuses on high momentum and breakthrough opportunities.
         """
         signal = {
-            'action': 'hold',
+            'action': 'HOLD',
             'price': analysis['price'],
             'confidence': 0.0,
             'timestamp': analysis['timestamp']
@@ -114,36 +114,82 @@ class TechDisruptor(BaseAgent):
             1.0
         )
         
-        # Strong buy conditions (breakthrough opportunity)
+        # Determine trend direction
+        trend_direction = 1 if analysis['trend_strength'] > 0 else -1 if analysis['trend_strength'] < 0 else 0
+        
+        # Explosive breakout opportunity
         if (analysis['is_breakout'] and
-            analysis['momentum'] > self.trend_threshold and
-            analysis['volume_surge'] > self.volume_surge_threshold):
+            analysis['momentum'] > self.trend_threshold * 2 and
+            analysis['volume_surge'] > self.volume_surge_threshold * 1.5):
             
-            signal['action'] = 'buy'
-            signal['confidence'] = base_confidence * 0.95  # High confidence for strong momentum
+            signal['action'] = 'STRONG_BUY'
+            signal['confidence'] = base_confidence * 0.95
             
-        # Sell conditions (momentum reversal)
+        # Strong momentum entry
+        elif (analysis['is_breakout'] and
+              analysis['momentum'] > self.trend_threshold and
+              analysis['volume_surge'] > self.volume_surge_threshold):
+            
+            signal['action'] = 'BUY'
+            signal['confidence'] = base_confidence * 0.85
+            
+        # Building momentum
+        elif (analysis['momentum'] > self.trend_threshold * 0.5 and
+              analysis['volume_surge'] > self.volume_surge_threshold * 0.8):
+            
+            signal['action'] = 'SCALE_IN'
+            signal['confidence'] = base_confidence * 0.75
+            
+        # Strong reversal
+        elif (analysis['rsi'] < 20 and
+              analysis['momentum'] < -self.trend_threshold * 2 and
+              analysis['trend_strength'] < -0.2):
+            
+            signal['action'] = 'STRONG_SELL'
+            signal['confidence'] = base_confidence * 0.9
+            
+        # Momentum breakdown
         elif (analysis['rsi'] < 30 and
               analysis['momentum'] < -self.trend_threshold and
               analysis['trend_strength'] < 0):
             
-            signal['action'] = 'sell'
-            signal['confidence'] = base_confidence * 0.85
+            signal['action'] = 'SELL'
+            signal['confidence'] = base_confidence * 0.8
+            
+        # Taking profits
+        elif (analysis['rsi'] > 80 or
+              analysis['momentum'] < -self.trend_threshold * 0.5):
+            
+            signal['action'] = 'SCALE_OUT'
+            signal['confidence'] = base_confidence * 0.7
+            
+        # Monitoring conditions
+        elif (abs(analysis['momentum']) < self.trend_threshold * 0.3 or
+              analysis['volume_surge'] < 1.0):
+            
+            signal['action'] = 'WATCH'
+            signal['confidence'] = base_confidence * 0.6
         
         # Add Elon Musk-style commentary
-        signal['commentary'] = self._generate_musk_commentary(analysis)
+        signal['commentary'] = self._generate_musk_commentary(analysis, signal['action'])
         
         return signal
     
-    def _generate_musk_commentary(self, analysis: Dict) -> str:
-        """Generate Elon Musk-style market commentary."""
-        if analysis['is_breakout']:
-            return "To the moon! 🚀"
-        elif analysis['innovation_score'] > 0.8:
-            return "The future is now! 💫"
-        elif analysis['volume_surge'] > self.volume_surge_threshold:
-            return "Funding secured! 💎"
-        elif analysis['momentum'] < -self.trend_threshold:
-            return "Time to disrupt the dip! 🔄"
+    def _generate_musk_commentary(self, analysis: Dict, action: str) -> str:
+        """Generate Elon Musk-style market commentary based on the action."""
+        if action == 'STRONG_BUY':
+            return "🚀 To Mars! Diamond hands activated! This is the way! 💎🙌"
+        elif action == 'BUY':
+            return "Funding secured! Time to launch! 🚀💫"
+        elif action == 'SCALE_IN':
+            return "Building the future, one position at a time! 🏗️🔋"
+        elif action == 'STRONG_SELL':
+            return "Houston, we have a problem! Time to eject! 🔥"
+        elif action == 'SELL':
+            return "Not stonks! Moving capital to Mars colony! 📉🛸"
+        elif action == 'SCALE_OUT':
+            return "Taking some profits to fund the next moonshot! 🌙💰"
+        elif action == 'WATCH':
+            return "Doing due diligence... might delete later! 🤔"
         else:
-            return "HODL! Diamond hands! 💎🙌" 
+            return "HODL! We're still early! 💎🙌" 

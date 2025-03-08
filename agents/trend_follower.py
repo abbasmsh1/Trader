@@ -75,7 +75,7 @@ class TrendFollower(BaseAgent):
             Dict: Trading signal with action, price, and confidence
         """
         signal = {
-            'action': 'hold',
+            'action': 'HOLD',
             'price': analysis['price'],
             'confidence': 0.0,
             'timestamp': analysis['timestamp']
@@ -84,24 +84,79 @@ class TrendFollower(BaseAgent):
         # Calculate base confidence from trend strength
         base_confidence = min(analysis['trend_strength'] * 10, 1.0)
         
-        # Strong uptrend conditions
+        # Strong uptrend with confirmation
         if (analysis['trend_direction'] > 0 and
-            analysis['rsi'] < self.rsi_overbought and
-            analysis['macd_crossover']):
-            signal['action'] = 'buy'
-            signal['confidence'] = base_confidence * 0.8  # Reduce slightly for safety
-        
-        # Strong downtrend conditions
+            analysis['rsi'] < self.rsi_overbought - 10 and
+            analysis['macd_crossover'] and
+            base_confidence > 0.8):
+            
+            signal['action'] = 'STRONG_BUY'
+            signal['confidence'] = base_confidence * 0.95
+            
+        # Regular uptrend entry
+        elif (analysis['trend_direction'] > 0 and
+              analysis['rsi'] < self.rsi_overbought and
+              analysis['macd_crossover']):
+            
+            signal['action'] = 'BUY'
+            signal['confidence'] = base_confidence * 0.85
+            
+        # Building position in uptrend
+        elif (analysis['trend_direction'] > 0 and
+              analysis['rsi'] < self.rsi_overbought + 5):
+            
+            signal['action'] = 'SCALE_IN'
+            signal['confidence'] = base_confidence * 0.75
+            
+        # Strong downtrend with confirmation
+        elif (analysis['trend_direction'] < 0 and
+              analysis['rsi'] > self.rsi_oversold + 10 and
+              analysis['macd_crossover'] and
+              base_confidence > 0.8):
+            
+            signal['action'] = 'STRONG_SELL'
+            signal['confidence'] = base_confidence * 0.9
+            
+        # Regular downtrend exit
         elif (analysis['trend_direction'] < 0 and
               analysis['rsi'] > self.rsi_oversold and
               analysis['macd_crossover']):
-            signal['action'] = 'sell'
-            signal['confidence'] = base_confidence * 0.8
-        
-        # Add RSI-based confidence adjustment
-        if analysis['rsi'] < self.rsi_oversold and signal['action'] == 'buy':
-            signal['confidence'] *= 1.2  # Increase confidence for oversold conditions
-        elif analysis['rsi'] > self.rsi_overbought and signal['action'] == 'sell':
-            signal['confidence'] *= 1.2  # Increase confidence for overbought conditions
             
-        return signal 
+            signal['action'] = 'SELL'
+            signal['confidence'] = base_confidence * 0.8
+            
+        # Reducing position in downtrend
+        elif (analysis['trend_direction'] < 0 and
+              analysis['rsi'] > self.rsi_oversold - 5):
+            
+            signal['action'] = 'SCALE_OUT'
+            signal['confidence'] = base_confidence * 0.7
+            
+        # Monitoring conditions
+        elif abs(analysis['trend_direction']) < 0.5:
+            signal['action'] = 'WATCH'
+            signal['confidence'] = base_confidence * 0.6
+        
+        # Add technical analysis commentary
+        signal['commentary'] = self._generate_technical_commentary(analysis, signal['action'])
+        
+        return signal
+    
+    def _generate_technical_commentary(self, analysis: Dict, action: str) -> str:
+        """Generate technical analysis commentary based on the action."""
+        if action == 'STRONG_BUY':
+            return "Strong bullish trend confirmed! Multiple indicators showing buy signals! 📈⬆️"
+        elif action == 'BUY':
+            return "Bullish trend developing with positive MACD crossover. 📈"
+        elif action == 'SCALE_IN':
+            return "Uptrend continues, adding to position on pullback. 📊"
+        elif action == 'STRONG_SELL':
+            return "Strong bearish trend confirmed! Multiple indicators showing sell signals! 📉⬇️"
+        elif action == 'SELL':
+            return "Bearish trend developing with negative MACD crossover. 📉"
+        elif action == 'SCALE_OUT':
+            return "Downtrend continues, reducing position on bounce. 📊"
+        elif action == 'WATCH':
+            return "Consolidation phase - waiting for clear trend direction. 🔍"
+        else:
+            return "Neutral trend - maintaining current position. ⚖️" 
