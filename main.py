@@ -149,10 +149,13 @@ class TradingSystem:
                     btc_amount = purchase_amount / btc_price
                     print(f"🔄 {agent.name} made initial BTC purchase: {btc_amount:.8f} BTC (${purchase_amount:.2f})")
                     
+                    # Get personality traits
+                    personality_traits = agent.get_personality_traits()
+                    
                     # Add to signals history
                     self.signals_history.append({
                         'agent': agent.name,
-                        'personality': agent.get_personality_traits()['personality'],
+                        'personality': personality_traits['personality'],
                         'symbol': "BTC/USDT",
                         'signal': {
                             'action': 'STRONG_BUY', 
@@ -160,8 +163,8 @@ class TradingSystem:
                             'reason': 'Initial purchase to grow $20 to $100'
                         },
                         'risk_tolerance': agent.risk_tolerance,
-                        'strategy': agent.get_personality_traits()['strategy_preferences'],
-                        'market_view': agent.get_personality_traits()['market_beliefs'],
+                        'strategy': personality_traits,
+                        'market_view': personality_traits.get('market_beliefs', {}),
                         'wallet_metrics': agent.wallet.get_performance_metrics({'BTC': btc_price}),
                         'trade_executed': True,
                         'timestamp': datetime.now().timestamp()
@@ -524,24 +527,24 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Div([
                     html.Div([
                         html.H3("Trading Controls", className='panel-title'),
-                        html.Label("Select USDT Pairs"),
-                        dcc.Dropdown(
-                            id='symbol-multi-dropdown',
-                            options=[{'label': s.replace('/USDT', ''), 'value': s} 
-                                    for s in usdt_pairs],
-                            value=usdt_pairs[:4],
-                            multi=True,
-                            className='dropdown'
-                        ),
-                        html.Label("Select Coin-to-Coin Pairs"),
-                        dcc.Dropdown(
-                            id='coin-pair-dropdown',
-                            options=[{'label': s, 'value': s} 
-                                    for s in coin_pairs],
-                            value=coin_pairs[:2] if coin_pairs else [],
-                            multi=True,
-                            className='dropdown coin-pair-dropdown'
-                        ),
+                        
+                        # Display the symbols as tags instead of dropdowns
+                        html.Div([
+                            html.Label("USDT Pairs", className='section-label'),
+                            html.Div([
+                                html.Span(s.replace('/USDT', ''), className='coin-tag usdt-pair')
+                                for s in usdt_pairs
+                            ], className='coin-tags-container')
+                        ], className='coin-section'),
+                        
+                        html.Div([
+                            html.Label("Coin-to-Coin Pairs", className='section-label'),
+                            html.Div([
+                                html.Span(s, className='coin-tag coin-pair')
+                                for s in coin_pairs
+                            ], className='coin-tags-container')
+                        ], className='coin-section'),
+                        
                         html.Label("Timeframe"),
                         dcc.Dropdown(
                             id='timeframe-dropdown',
@@ -597,9 +600,11 @@ def create_dashboard(trading_system: TradingSystem):
                                 options=[
                                     {'label': '2x2 Grid', 'value': '2x2'},
                                     {'label': '1x4 Row', 'value': '1x4'},
-                                    {'label': '2x3 Grid', 'value': '2x3'}
+                                    {'label': '2x3 Grid', 'value': '2x3'},
+                                    {'label': '3x3 Grid', 'value': '3x3'},
+                                    {'label': '4x4 Grid', 'value': '4x4'}
                                 ],
-                                value='2x2',
+                                value='3x3',
                                 className='layout-radio'
                             )
                         ], className='layout-container')
@@ -627,31 +632,242 @@ def create_dashboard(trading_system: TradingSystem):
         ], className='trading-view')
     
     def create_traders_comparison(trading_system):
-        """Create the traders comparison view layout."""
+        """Create the traders comparison view."""
         return html.Div([
-            html.H2("Traders Performance Comparison", className='section-title'),
-            
-            # Performance metrics cards
-            html.Div(id='traders-performance-cards', className='performance-cards-container'),
-            
-            # Portfolio comparison charts
+            # Portfolio Overview Section
             html.Div([
-                html.H3("Portfolio Value Comparison", className='subsection-title'),
-                html.Div(id='portfolio-value-chart', className='comparison-chart')
-            ], className='chart-section'),
+                html.H2("Traders Portfolio Overview", className='section-title'),
+                
+                # Total Holdings Summary Cards
+                html.Div([
+                    html.Div([
+                        html.Div([
+                            html.H3("Total Holdings (USDT)", className='holdings-title'),
+                            html.Div([
+                                create_holdings_summary(trading_system)
+                            ], className='holdings-summary-container')
+                        ], className='card-content')
+                    ], className='holdings-summary-card')
+                ], className='holdings-summary-section'),
+                
+                # Performance metrics
+                html.Div(id='traders-performance-cards', className='performance-cards-container'),
+                
+                # Portfolio value chart
+                html.Div([
+                    html.H3("Portfolio Value Comparison", className='subsection-title'),
+                    html.Div(id='portfolio-value-chart', className='portfolio-chart')
+                ], className='chart-section'),
+                
+                # Holdings comparison
+                html.Div([
+                    html.H3("Holdings Breakdown", className='subsection-title'),
+                    html.Div(id='holdings-comparison', className='holdings-comparison')
+                ], className='chart-section'),
+                
+                # Trade activity
+                html.Div([
+                    html.H3("Trade Activity", className='subsection-title'),
+                    html.Div(id='trade-activity-comparison', className='trade-activity')
+                ], className='chart-section'),
+                
+                # Trade history section
+                create_trade_history(trading_system)
+            ], className='traders-comparison-view')
+        ])
+        
+    def create_holdings_summary(trading_system):
+        """Create a summary of total holdings for each trader."""
+        # Get current prices for all symbols
+        current_prices = {}
+        for symbol in trading_system.symbols:
+            try:
+                if symbol.endswith('/USDT'):
+                    df = trading_system.get_market_data(symbol)
+                    if not df.empty:
+                        base_currency = symbol.split('/')[0]
+                        current_prices[base_currency] = float(df['close'].iloc[-1])
+            except Exception as e:
+                print(f"Error getting price for {symbol}: {str(e)}")
+        
+        # Get performance data for each agent
+        performance_data = []
+        for agent in trading_system.agents:
+            # Get wallet metrics
+            metrics = agent.wallet.get_performance_metrics(current_prices)
+            total_value = metrics['total_value_usdt']
+            usdt_balance = metrics['balance_usdt']
             
-            # Holdings comparison
-            html.Div([
-                html.H3("Holdings Comparison", className='subsection-title'),
-                html.Div(id='holdings-comparison', className='holdings-comparison')
-            ], className='chart-section'),
+            # Calculate crypto holdings value
+            crypto_value = total_value - usdt_balance
             
-            # Trade history comparison
-            html.Div([
-                html.H3("Trade Activity", className='subsection-title'),
-                html.Div(id='trade-activity-comparison', className='trade-activity')
-            ], className='chart-section')
-        ], className='traders-comparison-view')
+            # Calculate goal progress
+            goal_progress = total_value / 100.0
+            goal_status = "Goal Reached! 🏆" if goal_progress >= 1.0 else f"{goal_progress*100:.1f}% to $100"
+            
+            # Calculate crypto allocation
+            crypto_percentage = (crypto_value / total_value) * 100 if total_value > 0 else 0
+            usdt_percentage = (usdt_balance / total_value) * 100 if total_value > 0 else 0
+            
+            # Store the data
+            performance_data.append({
+                'agent': agent,
+                'name': agent.name,
+                'personality': agent.get_personality_traits()['personality'],
+                'total_value': total_value,
+                'usdt_balance': usdt_balance,
+                'crypto_value': crypto_value,
+                'crypto_percentage': crypto_percentage,
+                'usdt_percentage': usdt_percentage,
+                'goal_progress': goal_progress,
+                'goal_status': goal_status
+            })
+        
+        # Sort by total value (highest first)
+        performance_data.sort(key=lambda x: x['total_value'], reverse=True)
+        
+        # Create summary cards
+        summary_cards = []
+        for i, data in enumerate(performance_data):
+            # Create the summary card
+            card = html.Div([
+                html.Div([
+                    html.Div([
+                        html.Span(data['name'].replace(' AI', ''), className='agent-name'),
+                        html.Span(data['personality'], 
+                                 className=f"agent-badge {data['personality'].lower()}")
+                    ], className='summary-header'),
+                    
+                    html.Div([
+                        html.Div(f"${data['total_value']:.2f}", className='total-value'),
+                        html.Div("Total Wallet Value", className='value-label')
+                    ], className='value-container'),
+                    
+                    # Wallet composition visualization
+                    html.Div([
+                        html.Div("Wallet Composition", className='composition-title'),
+                        html.Div(className='composition-bar', children=[
+                            html.Div(
+                                className='usdt-portion',
+                                style={'width': f"{data['usdt_percentage']}%"}
+                            ),
+                            html.Div(
+                                className='crypto-portion',
+                                style={'width': f"{data['crypto_percentage']}%"}
+                            )
+                        ]),
+                        html.Div(className='composition-legend', children=[
+                            html.Div([
+                                html.Span(className='usdt-dot'),
+                                html.Span(f"USDT: ${data['usdt_balance']:.2f} ({data['usdt_percentage']:.1f}%)")
+                            ], className='legend-item'),
+                            html.Div([
+                                html.Span(className='crypto-dot'),
+                                html.Span(f"Crypto: ${data['crypto_value']:.2f} ({data['crypto_percentage']:.1f}%)")
+                            ], className='legend-item')
+                        ])
+                    ], className='wallet-composition'),
+                    
+                    html.Div([
+                        html.Div(className='goal-progress-bar', children=[
+                            html.Div(
+                                className='goal-progress-fill',
+                                style={'width': f"{min(100, data['goal_progress']*100)}%"}
+                            )
+                        ]),
+                        html.Div(data['goal_status'], className='goal-status')
+                    ], className='goal-container')
+                ], className='summary-content')
+            ], className=f"holdings-summary-card {i == 0 and 'leading' or ''}")
+            
+            summary_cards.append(card)
+        
+        return html.Div(summary_cards, className='holdings-summary-grid')
+    
+    def create_trade_history(trading_system):
+        """Create a component to display trade history for each trader."""
+        trade_history_cards = []
+        
+        for agent in trading_system.agents:
+            # Get trade history from wallet
+            trades = agent.wallet.trades_history
+            
+            if not trades:
+                # No trades yet
+                card = html.Div([
+                    html.Div([
+                        html.H3([
+                            html.Span(agent.name.replace(' AI', ''), className='agent-name'),
+                            html.Span(agent.get_personality_traits()['personality'], 
+                                     className=f"agent-badge {agent.get_personality_traits()['personality'].lower()}")
+                        ]),
+                        html.Div("No trades executed yet", className='no-trades-message')
+                    ], className='card-content')
+                ], className='trade-history-card')
+            else:
+                # Sort trades by timestamp (newest first)
+                sorted_trades = sorted(trades, key=lambda x: x['timestamp'], reverse=True)
+                
+                # Create trade list
+                trade_items = []
+                for trade in sorted_trades[:10]:  # Show only the 10 most recent trades
+                    # Format timestamp
+                    timestamp = trade['timestamp']
+                    if isinstance(timestamp, datetime):
+                        time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        time_str = "Unknown time"
+                    
+                    # Determine trade class based on action
+                    trade_class = 'trade-buy' if trade['action'] == 'BUY' else 'trade-sell'
+                    
+                    # Format amounts
+                    amount_usdt = f"${trade['amount_usdt']:.2f}"
+                    amount_crypto = f"{trade['amount_crypto']:.8f}"
+                    
+                    # Create trade item
+                    trade_item = html.Div([
+                        html.Div([
+                            html.Span(trade['action'], className=f'trade-action {trade_class}'),
+                            html.Span(trade['symbol'], className='trade-symbol')
+                        ], className='trade-header'),
+                        html.Div([
+                            html.Div([
+                                html.Span("Amount: ", className='trade-label'),
+                                html.Span(f"{amount_crypto} @ ${trade['price']:.2f}", className='trade-value')
+                            ], className='trade-detail'),
+                            html.Div([
+                                html.Span("Value: ", className='trade-label'),
+                                html.Span(amount_usdt, className='trade-value')
+                            ], className='trade-detail'),
+                            html.Div([
+                                html.Span("Time: ", className='trade-label'),
+                                html.Span(time_str, className='trade-value trade-time')
+                            ], className='trade-detail')
+                        ], className='trade-details')
+                    ], className=f'trade-item {trade_class}')
+                    
+                    trade_items.append(trade_item)
+                
+                # Create card with trades
+                card = html.Div([
+                    html.Div([
+                        html.H3([
+                            html.Span(agent.name.replace(' AI', ''), className='agent-name'),
+                            html.Span(agent.get_personality_traits()['personality'], 
+                                     className=f"agent-badge {agent.get_personality_traits()['personality'].lower()}")
+                        ]),
+                        html.Div(f"Total trades: {len(trades)}", className='trade-count'),
+                        html.Div(trade_items, className='trade-list')
+                    ], className='card-content')
+                ], className='trade-history-card')
+            
+            trade_history_cards.append(card)
+        
+        return html.Div([
+            html.H2("Trade History", className='section-title'),
+            html.Div(trade_history_cards, className='trade-history-container')
+        ], className='trade-history-section')
     
     # Callback to update traders comparison view
     @app.callback(
@@ -668,10 +884,11 @@ def create_dashboard(trading_system: TradingSystem):
             current_prices = {}
             for symbol in trading_system.symbols:
                 try:
-                    df = trading_system.get_market_data(symbol)
-                    if not df.empty:
-                        base_currency = symbol.split('/')[0]
-                        current_prices[base_currency] = float(df['close'].iloc[-1])
+                    if symbol.endswith('/USDT'):
+                        df = trading_system.get_market_data(symbol)
+                        if not df.empty:
+                            base_currency = symbol.split('/')[0]
+                            current_prices[base_currency] = float(df['close'].iloc[-1])
                 except Exception as e:
                     print(f"Error getting price for {symbol}: {str(e)}")
             
@@ -684,12 +901,30 @@ def create_dashboard(trading_system: TradingSystem):
                 goal_progress = metrics['total_value_usdt'] / 100.0
                 goal_status = "Reached!" if goal_progress >= 1.0 else f"{goal_progress*100:.1f}%"
                 
+                # Calculate holdings with USDT values
+                holdings_with_value = []
+                for symbol, amount in metrics['holdings'].items():
+                    if symbol in current_prices:
+                        usdt_value = amount * current_prices[symbol]
+                        percentage = (usdt_value / metrics['total_value_usdt']) * 100 if metrics['total_value_usdt'] > 0 else 0
+                        holdings_with_value.append({
+                            'symbol': symbol,
+                            'amount': amount,
+                            'price': current_prices[symbol],
+                            'usdt_value': usdt_value,
+                            'percentage': percentage
+                        })
+                
+                # Sort holdings by USDT value (highest first)
+                holdings_with_value.sort(key=lambda x: x['usdt_value'], reverse=True)
+                
                 performance_data.append({
                     'agent': agent.name,
                     'personality': agent.get_personality_traits()['personality'],
                     'total_value': metrics['total_value_usdt'],
                     'balance_usdt': metrics['balance_usdt'],
                     'holdings': metrics['holdings'],
+                    'holdings_with_value': holdings_with_value,
                     'total_return': metrics['total_return_pct'],
                     'trade_count': metrics['trade_count'],
                     'goal_progress': goal_progress,
@@ -801,27 +1036,84 @@ def create_dashboard(trading_system: TradingSystem):
                 )
             ], className='portfolio-chart')
             
-            # Create holdings comparison
+            # Create enhanced holdings comparison with USDT values
             holdings_comparison = html.Div([
-                html.H3("Holdings Comparison"),
                 html.Div([
                     html.Div([
-                        html.H4(data['agent'].replace(' AI', '')),
+                        # Header with agent name and total value
                         html.Div([
-                            html.Div([
-                                html.Div(f"{symbol}: {amount:.6f}", className='holding-item'),
+                            html.H4(data['agent'].replace(' AI', ''), className='holdings-card-title'),
+                            html.Div(f"Total Value: ${data['total_value']:.2f}", className='holdings-total-value')
+                        ], className='holdings-card-header'),
+                        
+                        # Wallet composition visualization
+                        html.Div([
+                            html.Div(className='wallet-bar', children=[
                                 html.Div(
-                                    f"${amount * current_prices.get(symbol, 0):.2f}",
-                                    className='holding-value'
+                                    className='usdt-bar',
+                                    style={'width': f"{data['balance_usdt'] / data['total_value'] * 100 if data['total_value'] > 0 else 0}%"}
+                                ),
+                                html.Div(
+                                    className='crypto-bar',
+                                    style={'width': f"{(data['total_value'] - data['balance_usdt']) / data['total_value'] * 100 if data['total_value'] > 0 else 0}%"}
                                 )
-                            ], className='holding-row')
-                            for symbol, amount in data['holdings'].items()
-                        ] + [
-                            html.Div([
-                                html.Div("USDT Balance:", className='holding-item'),
-                                html.Div(f"${data['balance_usdt']:.2f}", className='holding-value')
-                            ], className='holding-row')
-                        ], className='holdings-list')
+                            ]),
+                            html.Div(className='wallet-legend', children=[
+                                html.Div([
+                                    html.Span("USDT:", className='legend-label'),
+                                    html.Span(f"${data['balance_usdt']:.2f}", className='legend-value')
+                                ], className='legend-row'),
+                                html.Div([
+                                    html.Span("Crypto:", className='legend-label'),
+                                    html.Span(f"${(data['total_value'] - data['balance_usdt']):.2f}", className='legend-value')
+                                ], className='legend-row')
+                            ])
+                        ], className='wallet-summary'),
+                        
+                        # Detailed Holdings with USDT values
+                        html.Div([
+                            html.H5("Crypto Holdings", className='holdings-subtitle'),
+                            html.Table([
+                                html.Thead(
+                                    html.Tr([
+                                        html.Th("Asset"),
+                                        html.Th("Amount"),
+                                        html.Th("Price (USDT)"),
+                                        html.Th("Value (USDT)"),
+                                        html.Th("% of Portfolio")
+                                    ])
+                                ),
+                                html.Tbody([
+                                    html.Tr([
+                                        html.Td([
+                                            get_coin_category_span(holding['symbol']),
+                                            html.Span(holding['symbol'])
+                                        ], className='asset-cell'),
+                                        html.Td(f"{holding['amount']:.8f}", className='amount-cell'),
+                                        html.Td(f"${holding['price']:.2f}", className='price-cell'),
+                                        html.Td(f"${holding['usdt_value']:.2f}", className='value-cell'),
+                                        html.Td([
+                                            html.Div(className='percentage-bar-container', children=[
+                                                html.Div(
+                                                    className='percentage-bar',
+                                                    style={'width': f"{min(100, holding['percentage'])}%"}
+                                                ),
+                                                html.Span(f"{holding['percentage']:.1f}%", className='percentage-text')
+                                            ])
+                                        ], className='percentage-cell')
+                                    ], className=f"holding-row {i % 2 == 0 and 'even' or 'odd'}") 
+                                    for i, holding in enumerate(data['holdings_with_value'])
+                                ] if data['holdings_with_value'] else [
+                                    html.Tr([
+                                        html.Td(
+                                            "No crypto holdings", 
+                                            colSpan=5, 
+                                            className='no-holdings-message'
+                                        )
+                                    ])
+                                ])
+                            ], className='holdings-table')
+                        ], className='holdings-detail')
                     ], className='holdings-card')
                     for data in performance_data
                 ], className='holdings-grid')
@@ -829,12 +1121,9 @@ def create_dashboard(trading_system: TradingSystem):
             
             # Create trade activity comparison
             trade_activity = html.Div([
-                html.H3("Recent Trade Activity"),
-                html.Div([
-                    html.Div(id='trade-activity-content', children=[
-                        html.Div("Loading trade activity...", className='loading-message')
-                    ])
-                ], className='trade-activity-container')
+                html.Div(id='trade-activity-content', children=[
+                    html.Div("Loading trade activity...", className='loading-message')
+                ])
             ], className='trade-activity-comparison')
             
             return performance_cards, portfolio_chart, holdings_comparison, trade_activity
@@ -847,6 +1136,20 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Div("Error loading holdings comparison"),
                 html.Div("Error loading trade activity")
             )
+            
+    def get_coin_category_span(symbol):
+        """Get a span element with the appropriate coin category styling."""
+        if symbol in ['BTC', 'ETH', 'BNB', 'SOL', 'ADA']:
+            category = "major"
+            emoji = "💎"
+        elif symbol in ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK']:
+            category = "meme"
+            emoji = "🚀"
+        else:
+            category = "alt"
+            emoji = "⭐"
+            
+        return html.Span(emoji, className=f"coin-category-icon {category}-coin")
     
     def create_signals_table(signals):
         """Create a table of trading signals."""
@@ -941,23 +1244,41 @@ def create_dashboard(trading_system: TradingSystem):
          Output('market-overview', 'children'),
          Output('signals-table', 'children')],
         [Input('interval-component', 'n_intervals'),
-         Input('symbol-multi-dropdown', 'value'),
-         Input('coin-pair-dropdown', 'value'),
          Input('timeframe-dropdown', 'value'),
          Input('indicator-checklist', 'value'),
          Input('chart-style', 'value'),
          Input('layout-radio', 'value')],
         [State('auto-refresh-switch', 'value')]
     )
-    def update_trading_view(n, usdt_symbols, coin_symbols, timeframe, indicators, chart_style, layout, auto_refresh):
+    def update_trading_view(n, timeframe, indicators, chart_style, layout, auto_refresh):
         """Update the trading view components."""
         print("\nUpdating trading view...")
         
-        # Combine both symbol types
-        all_symbols = (usdt_symbols or []) + (coin_symbols or [])
+        # Get all symbols directly from the trading system
+        all_symbols = trading_system.symbols
         
-        print(f"USDT Pairs: {usdt_symbols}")
-        print(f"Coin Pairs: {coin_symbols}")
+        # Limit the number of symbols based on the layout to avoid performance issues
+        max_charts = {
+            '2x2': 4,
+            '1x4': 4,
+            '2x3': 6,
+            '3x3': 9,
+            '4x4': 16
+        }.get(layout, 9)
+        
+        # Prioritize major coins, then meme coins, then alt coins
+        major_coins = [s for s in all_symbols if s.split('/')[0] in ['BTC', 'ETH', 'BNB', 'SOL', 'ADA']]
+        meme_coins = [s for s in all_symbols if s.split('/')[0] in ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK']]
+        coin_pairs = [s for s in all_symbols if '/' in s and not s.endswith('/USDT')]
+        other_coins = [s for s in all_symbols if s not in major_coins + meme_coins + coin_pairs]
+        
+        # Order the symbols by priority
+        ordered_symbols = major_coins + meme_coins + coin_pairs + other_coins
+        
+        # Limit to max_charts
+        display_symbols = ordered_symbols[:max_charts]
+        
+        print(f"Displaying {len(display_symbols)} out of {len(all_symbols)} symbols")
         print(f"Timeframe: {timeframe}")
         print(f"Indicators: {indicators}")
         print(f"Chart style: {chart_style}")
@@ -971,7 +1292,7 @@ def create_dashboard(trading_system: TradingSystem):
             print("Auto-refresh disabled")
             raise PreventUpdate
         
-        if not all_symbols:
+        if not display_symbols:
             print("No symbols selected")
             return [], html.Div("No symbols selected"), html.Div("No signals available")
         
@@ -980,7 +1301,7 @@ def create_dashboard(trading_system: TradingSystem):
             charts = []
             market_overview_data = []
             
-            for symbol in all_symbols:
+            for symbol in display_symbols:
                 try:
                     print(f"Processing {symbol}...")
                     df = trading_system.get_market_data(symbol)
@@ -1090,10 +1411,20 @@ def create_dashboard(trading_system: TradingSystem):
                     # For coin-to-coin pairs, show the ratio
                     if not symbol.endswith('/USDT'):
                         base, quote = symbol.split('/')
-                        display_symbol = f"{base}/{quote} Ratio"
+                        display_symbol = f"{base}/{quote}"
                         price_format = f"{current_price:.6f}"
+                        coin_category = "ratio"
                     else:
-                        display_symbol = symbol.replace('/USDT', '')
+                        # Determine coin category
+                        base = symbol.split('/')[0]
+                        if base in ['BTC', 'ETH', 'BNB', 'SOL', 'ADA']:
+                            coin_category = "major"
+                        elif base in ['DOGE', 'SHIB', 'PEPE', 'FLOKI', 'BONK']:
+                            coin_category = "meme"
+                        else:
+                            coin_category = "alt"
+                            
+                        display_symbol = base
                         price_format = f"${current_price:.2f}"
                     
                     market_overview_data.append({
@@ -1101,7 +1432,8 @@ def create_dashboard(trading_system: TradingSystem):
                         'price': price_format,
                         'change': price_change,
                         'volume': df['volume'].iloc[-1],
-                        'is_ratio': not symbol.endswith('/USDT')
+                        'is_ratio': not symbol.endswith('/USDT'),
+                        'category': coin_category
                     })
                     
                 except Exception as e:
@@ -1121,6 +1453,7 @@ def create_dashboard(trading_system: TradingSystem):
                 html.Table([
                     html.Thead(html.Tr([
                         html.Th("Symbol"),
+                        html.Th("Category"),
                         html.Th("Price"),
                         html.Th("24h Change"),
                         html.Th("Volume")
@@ -1128,6 +1461,7 @@ def create_dashboard(trading_system: TradingSystem):
                     html.Tbody([
                         html.Tr([
                             html.Td(data['symbol']),
+                            html.Td(html.Span(data['category'].capitalize(), className=f"coin-category {data['category']}")),
                             html.Td(data['price']),
                             html.Td(
                                 f"{data['change']:.2f}%",
@@ -1789,80 +2123,120 @@ def create_dashboard(trading_system: TradingSystem):
                 /* Signals table improvements */
                 .signals-table-container {
                     overflow-x: auto;
-                    margin-top: 10px;
-                    border-radius: 8px;
-                    background-color: #1a1a1a;
+                    margin-top: 15px;
+                    border-radius: 12px;
+                    background-color: #1E1E1E;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
                 }
+                
                 .signals-table-content {
                     width: 100%;
                     border-collapse: collapse;
                 }
+                
                 .signals-table-content th {
-                    background-color: #2b3c4e;
-                    padding: 12px 15px;
+                    background-color: #333333;
+                    padding: 15px;
                     text-align: left;
-                    font-weight: bold;
-                    color: white;
+                    font-weight: 500;
+                    color: #ffffff;
                     position: sticky;
                     top: 0;
+                    z-index: 10;
                 }
+                
                 .signals-table-content td {
-                    padding: 10px 15px;
-                    border-bottom: 1px solid #2b3c4e;
+                    padding: 12px 15px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
                 }
+                
                 .signals-table-content tr:hover {
-                    background-color: #2b3c4e;
+                    background-color: rgba(255, 255, 255, 0.05);
                 }
-                .no-data {
-                    padding: 20px;
-                    text-align: center;
-                    color: #a8b2c1;
+                
+                /* Market overview improvements */
+                .market-overview-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 15px;
                 }
-                /* Coin-to-coin ratio charts */
-                .coin-ratio-chart {
-                    border: 2px solid #673AB7;
+                
+                .market-overview-table th {
+                    background-color: #333333;
+                    padding: 15px;
+                    text-align: left;
+                    font-weight: 500;
+                    color: #ffffff;
+                }
+                
+                .market-overview-table td {
+                    padding: 12px 15px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                }
+                
+                .market-overview-table tr:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+                
+                /* Progress bar improvements */
+                .progress-bar-container {
+                    width: 100%;
+                    background-color: #333333;
                     border-radius: 8px;
+                    position: relative;
+                    height: 20px;
+                    overflow: hidden;
+                    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
                 }
                 
-                .coin-ratio-label {
-                    background-color: #673AB7;
+                .progress-bar {
+                    height: 100%;
+                    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+                    border-radius: 8px;
+                    transition: width 0.5s ease-in-out;
+                }
+                
+                .progress-text {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
                     color: white;
-                    padding: 2px 6px;
-                    border-radius: 4px;
-                    font-size: 0.8em;
-                    margin-left: 5px;
+                    font-weight: bold;
+                    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.7);
                 }
                 
-                /* Memory system indicator */
+                /* Memory status improvements */
                 .memory-status {
                     position: fixed;
                     bottom: 20px;
                     right: 20px;
-                    background-color: rgba(33, 150, 243, 0.8);
+                    background: linear-gradient(135deg, #2196F3, #0D47A1);
                     color: white;
-                    padding: 10px 15px;
-                    border-radius: 5px;
+                    padding: 12px 20px;
+                    border-radius: 8px;
                     font-size: 0.9em;
                     z-index: 1000;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 10px;
+                    transition: all 0.3s ease;
                 }
                 
                 .memory-status .icon {
-                    font-size: 1.2em;
+                    font-size: 1.3em;
                 }
                 
                 .memory-status.saved {
-                    background-color: rgba(76, 175, 80, 0.8);
+                    background: linear-gradient(135deg, #4CAF50, #2E7D32);
                     animation: fadeOut 3s forwards;
                     animation-delay: 2s;
                 }
                 
                 @keyframes fadeOut {
-                    from { opacity: 1; }
-                    to { opacity: 0; visibility: hidden; }
+                    from { opacity: 1; transform: translateY(0); }
+                    to { opacity: 0; transform: translateY(20px); visibility: hidden; }
                 }
                 
                 /* Dropdown improvements */
@@ -1879,6 +2253,897 @@ def create_dashboard(trading_system: TradingSystem):
                 
                 .coin-pair-dropdown .Select-value-label {
                     color: white !important;
+                }
+                
+                /* Trader quotes */
+                .trader-quote {
+                    font-style: italic;
+                    color: #a8b2c1;
+                    font-size: 0.9em;
+                    max-width: 200px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                
+                /* Meme coin styling */
+                .meme-coin {
+                    position: relative;
+                    display: inline-block;
+                }
+                
+                .meme-coin::after {
+                    content: "🚀";
+                    position: absolute;
+                    top: -5px;
+                    right: -10px;
+                    font-size: 0.8em;
+                }
+                
+                /* Alt coin styling */
+                .alt-coin {
+                    position: relative;
+                    display: inline-block;
+                }
+                
+                .alt-coin::after {
+                    content: "⭐";
+                    position: absolute;
+                    top: -5px;
+                    right: -10px;
+                    font-size: 0.8em;
+                }
+                
+                /* Coin categories */
+                .coin-category {
+                    display: inline-block;
+                    font-size: 0.7em;
+                    padding: 2px 6px;
+                    border-radius: 10px;
+                    margin-left: 5px;
+                }
+                
+                .coin-category.major {
+                    background-color: #4CAF50;
+                    color: white;
+                }
+                
+                .coin-category.meme {
+                    background-color: #FF9800;
+                    color: white;
+                }
+                
+                .coin-category.alt {
+                    background-color: #2196F3;
+                    color: white;
+                }
+                
+                .coin-category.ratio {
+                    background-color: #673AB7;
+                    color: white;
+                }
+                
+                /* Trade history styles */
+                .trade-history-section {
+                    margin-top: 30px;
+                    padding: 20px;
+                    background-color: #2b3c4e;
+                    border-radius: 10px;
+                }
+                
+                .trade-history-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                    margin-top: 20px;
+                }
+                
+                .trade-history-card {
+                    flex: 1;
+                    min-width: 300px;
+                    background-color: #1f2630;
+                    border-radius: 8px;
+                    padding: 15px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                }
+                
+                .trade-count {
+                    color: #a8b2c1;
+                    margin-bottom: 15px;
+                    font-size: 0.9em;
+                }
+                
+                .trade-list {
+                    max-height: 400px;
+                    overflow-y: auto;
+                    padding-right: 5px;
+                }
+                
+                .trade-item {
+                    margin-bottom: 15px;
+                    padding: 12px;
+                    border-radius: 8px;
+                    background-color: #283442;
+                    border-left: 4px solid;
+                }
+                
+                .trade-item.trade-buy {
+                    border-color: #4CAF50;
+                }
+                
+                .trade-item.trade-sell {
+                    border-color: #F44336;
+                }
+                
+                .trade-header {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 10px;
+                    padding-bottom: 5px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                }
+                
+                .trade-action {
+                    font-weight: bold;
+                    padding: 2px 8px;
+                    border-radius: 4px;
+                }
+                
+                .trade-action.trade-buy {
+                    background-color: rgba(76, 175, 80, 0.2);
+                    color: #4CAF50;
+                }
+                
+                .trade-action.trade-sell {
+                    background-color: rgba(244, 67, 54, 0.2);
+                    color: #F44336;
+                }
+                
+                .trade-symbol {
+                    color: #a8b2c1;
+                }
+                
+                .trade-details {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 5px;
+                }
+                
+                .trade-detail {
+                    display: flex;
+                    justify-content: space-between;
+                }
+                
+                .trade-label {
+                    color: #a8b2c1;
+                    font-size: 0.9em;
+                }
+                
+                .trade-value {
+                    font-weight: 500;
+                }
+                
+                .trade-time {
+                    font-size: 0.85em;
+                    color: #a8b2c1;
+                }
+                
+                .no-trades-message {
+                    padding: 20px;
+                    text-align: center;
+                    color: #a8b2c1;
+                    font-style: italic;
+                }
+                
+                /* Modern UI improvements */
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    background-color: #121212;
+                    color: #ffffff;
+                    line-height: 1.6;
+                }
+                
+                .container {
+                    padding: 20px;
+                    max-width: 1800px;
+                    margin: 0 auto;
+                }
+                
+                .header {
+                    text-align: center;
+                    padding: 30px 20px;
+                    background: linear-gradient(135deg, #1a237e, #0d47a1);
+                    border-radius: 15px;
+                    margin-bottom: 30px;
+                    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                .dashboard-title {
+                    margin: 0;
+                    color: #ffffff;
+                    font-size: 2.8em;
+                    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+                    letter-spacing: 1px;
+                }
+                
+                .dashboard-subtitle {
+                    color: rgba(255, 255, 255, 0.8);
+                    font-size: 1.2em;
+                    margin-top: 10px;
+                    font-weight: 300;
+                }
+                
+                /* Navigation improvements */
+                .nav-container {
+                    display: flex;
+                    justify-content: center;
+                    margin-bottom: 30px;
+                    gap: 15px;
+                }
+                
+                .nav-button {
+                    background-color: #252525;
+                    color: #ffffff;
+                    border: none;
+                    padding: 12px 25px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    font-size: 1.1em;
+                    font-weight: 500;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                .nav-button::after {
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 3px;
+                    background-color: #2196F3;
+                    transform: scaleX(0);
+                    transition: transform 0.3s ease;
+                }
+                
+                .nav-button:hover {
+                    background-color: #333333;
+                    transform: translateY(-2px);
+                }
+                
+                .nav-button.active {
+                    background-color: #333333;
+                    color: #2196F3;
+                }
+                
+                .nav-button.active::after {
+                    transform: scaleX(1);
+                }
+                
+                /* Main content improvements */
+                .main-content {
+                    display: flex;
+                    gap: 20px;
+                    margin-bottom: 30px;
+                }
+                
+                .left-panel, .right-panel {
+                    background-color: #252525;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                }
+                
+                .control-panel, .chart-panel, .signals-panel {
+                    background-color: #1E1E1E;
+                    padding: 25px;
+                    border-radius: 12px;
+                    margin-bottom: 25px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                    transition: transform 0.3s ease, box-shadow 0.3s ease;
+                }
+                
+                .control-panel:hover, .chart-panel:hover, .signals-panel:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                }
+                
+                .panel-title {
+                    margin-top: 0;
+                    margin-bottom: 25px;
+                    color: #ffffff;
+                    font-size: 1.5em;
+                    font-weight: 500;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    padding-bottom: 15px;
+                    position: relative;
+                }
+                
+                .panel-title::after {
+                    content: '';
+                    position: absolute;
+                    bottom: -1px;
+                    left: 0;
+                    width: 50px;
+                    height: 3px;
+                    background-color: #2196F3;
+                }
+                
+                /* Chart grid improvements */
+                .chart-grid {
+                    display: grid;
+                    gap: 20px;
+                    margin-bottom: 25px;
+                }
+                
+                .chart-grid-2x2 {
+                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-rows: repeat(2, 400px);
+                }
+                
+                .chart-grid-1x4 {
+                    grid-template-columns: 1fr;
+                    grid-template-rows: repeat(4, 300px);
+                }
+                
+                .chart-grid-2x3 {
+                    grid-template-columns: repeat(2, 1fr);
+                    grid-template-rows: repeat(3, 300px);
+                }
+                
+                .chart-container-2x2, .chart-container-1x4, .chart-container-2x3 {
+                    background-color: #1E1E1E;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                    transition: transform 0.3s ease;
+                }
+                
+                .chart-container-2x2:hover, .chart-container-1x4:hover, .chart-container-2x3:hover {
+                    transform: scale(1.02);
+                }
+                
+                /* Form controls improvements */
+                label {
+                    display: block;
+                    margin-bottom: 8px;
+                    color: #B0B0B0;
+                    font-weight: 500;
+                }
+                
+                .dropdown {
+                    margin-bottom: 20px;
+                }
+                
+                /* Holdings summary styles */
+                .holdings-summary-section {
+                    margin-bottom: 30px;
+                }
+                
+                .holdings-title {
+                    margin-top: 0;
+                    margin-bottom: 20px;
+                    color: #ffffff;
+                    font-size: 1.5em;
+                    text-align: center;
+                }
+                
+                .holdings-summary-container {
+                    padding: 10px;
+                }
+                
+                .holdings-summary-grid {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                    justify-content: center;
+                }
+                
+                .holdings-summary-card {
+                    flex: 1;
+                    min-width: 280px;
+                    max-width: 350px;
+                    background: linear-gradient(145deg, #1E1E1E, #252525);
+                    border-radius: 15px;
+                    padding: 20px;
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                    transition: all 0.3s ease;
+                    border-left: 5px solid #2196F3;
+                    position: relative;
+                    overflow: hidden;
+                }
+                
+                .holdings-summary-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.3);
+                }
+                
+                .holdings-summary-card.leading {
+                    border-left: 5px solid #4CAF50;
+                    background: linear-gradient(145deg, #1E1E1E, #2E3B2E);
+                }
+                
+                .holdings-summary-card.leading::after {
+                    content: '🏆';
+                    position: absolute;
+                    top: 10px;
+                    right: 10px;
+                    font-size: 1.5em;
+                    opacity: 0.8;
+                }
+                
+                .summary-header {
+                    display: flex;
+                    align-items: center;
+                    margin-bottom: 15px;
+                    padding-bottom: 10px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                }
+                
+                .value-container {
+                    text-align: center;
+                    margin-bottom: 20px;
+                }
+                
+                .total-value {
+                    font-size: 2.2em;
+                    font-weight: bold;
+                    color: #ffffff;
+                    margin-bottom: 5px;
+                }
+                
+                .value-label {
+                    color: #B0B0B0;
+                    font-size: 0.9em;
+                }
+                
+                .balance-container {
+                    margin-bottom: 20px;
+                    background-color: rgba(0, 0, 0, 0.2);
+                    border-radius: 8px;
+                    padding: 15px;
+                }
+                
+                .balance-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 10px;
+                }
+                
+                .balance-row:last-child {
+                    margin-bottom: 0;
+                }
+                
+                .balance-label {
+                    color: #B0B0B0;
+                }
+                
+                .balance-value {
+                    font-weight: 500;
+                }
+                
+                .goal-container {
+                    text-align: center;
+                }
+                
+                .goal-progress-bar {
+                    height: 10px;
+                    background-color: rgba(255, 255, 255, 0.1);
+                    border-radius: 5px;
+                    overflow: hidden;
+                    margin-bottom: 8px;
+                }
+                
+                .goal-progress-fill {
+                    height: 100%;
+                    background: linear-gradient(90deg, #2196F3, #4CAF50);
+                    border-radius: 5px;
+                    transition: width 0.5s ease;
+                }
+                
+                .goal-status {
+                    font-size: 0.9em;
+                    color: #B0B0B0;
+                }
+                
+                /* Detailed holdings styles */
+                .holdings-grid {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 20px;
+                }
+                
+                .holdings-card {
+                    flex: 1;
+                    min-width: 300px;
+                    background-color: #1E1E1E;
+                    border-radius: 12px;
+                    padding: 20px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                    transition: transform 0.3s ease;
+                }
+                
+                .holdings-card:hover {
+                    transform: translateY(-5px);
+                    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                }
+                
+                .holdings-card-title {
+                    margin-top: 0;
+                    margin-bottom: 20px;
+                    color: #ffffff;
+                    font-size: 1.3em;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    padding-bottom: 10px;
+                }
+                
+                .holdings-row {
+                    display: flex;
+                    justify-content: space-between;
+                    padding: 10px;
+                    margin-bottom: 10px;
+                    border-radius: 8px;
+                }
+                
+                .usdt-balance {
+                    background-color: rgba(33, 150, 243, 0.1);
+                    border-left: 3px solid #2196F3;
+                }
+                
+                .crypto-total {
+                    background-color: rgba(76, 175, 80, 0.1);
+                    border-left: 3px solid #4CAF50;
+                    margin-bottom: 20px;
+                }
+                
+                .holdings-label {
+                    color: #B0B0B0;
+                    font-weight: 500;
+                }
+                
+                .holdings-value {
+                    font-weight: bold;
+                }
+                
+                .holdings-detail {
+                    margin-top: 15px;
+                    max-height: 300px;
+                    overflow-y: auto;
+                }
+                
+                .holdings-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                
+                .holdings-table th {
+                    background-color: #252525;
+                    padding: 10px;
+                    text-align: left;
+                    font-weight: 500;
+                    color: #B0B0B0;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
+                }
+                
+                .holdings-table td {
+                    padding: 10px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                }
+                
+                .holdings-table tr:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+                
+                .coin-category-icon {
+                    margin-right: 8px;
+                    font-size: 1.1em;
+                }
+                
+                .major-coin {
+                    color: #2196F3;
+                }
+                
+                .meme-coin {
+                    color: #FF9800;
+                }
+                
+                .alt-coin {
+                    color: #9C27B0;
+                }
+                
+                /* Coin tags styles */
+                .coin-section {
+                    margin-bottom: 20px;
+                }
+                
+                .section-label {
+                    display: block;
+                    margin-bottom: 10px;
+                    color: #ffffff;
+                    font-weight: 500;
+                    font-size: 1.1em;
+                }
+                
+                .coin-tags-container {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 8px;
+                    margin-bottom: 15px;
+                }
+                
+                .coin-tag {
+                    display: inline-block;
+                    padding: 6px 12px;
+                    border-radius: 20px;
+                    font-size: 0.9em;
+                    font-weight: 500;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+                    transition: all 0.3s ease;
+                }
+                
+                .coin-tag:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+                }
+                
+                .usdt-pair {
+                    background: linear-gradient(135deg, #2196F3, #0D47A1);
+                    color: white;
+                }
+                
+                .coin-pair {
+                    background: linear-gradient(135deg, #673AB7, #4A148C);
+                    color: white;
+                }
+                
+                /* Additional chart grid layouts */
+                .chart-grid-3x3 {
+                    grid-template-columns: repeat(3, 1fr);
+                    grid-template-rows: repeat(3, 300px);
+                }
+                
+                .chart-grid-4x4 {
+                    grid-template-columns: repeat(4, 1fr);
+                    grid-template-rows: repeat(4, 250px);
+                }
+                
+                .chart-container-3x3, .chart-container-4x4 {
+                    background-color: #1E1E1E;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+                    transition: transform 0.3s ease;
+                }
+                
+                .chart-container-3x3:hover, .chart-container-4x4:hover {
+                    transform: scale(1.02);
+                }
+                
+                /* Percentage bar styles */
+                .percentage-bar-container {
+                    width: 100%;
+                    background-color: rgba(255, 255, 255, 0.1);
+                    border-radius: 4px;
+                    position: relative;
+                    height: 16px;
+                    overflow: hidden;
+                }
+                
+                .percentage-bar {
+                    height: 100%;
+                    background: linear-gradient(90deg, #2196F3, #03A9F4);
+                    border-radius: 4px;
+                    transition: width 0.5s ease;
+                }
+                
+                .percentage-text {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    color: white;
+                    font-size: 0.8em;
+                    font-weight: bold;
+                    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+                }
+                
+                /* Enhanced holdings table */
+                .holdings-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                }
+                
+                .holdings-table th {
+                    background-color: #252525;
+                    padding: 12px 10px;
+                    text-align: left;
+                    font-weight: 500;
+                    color: #B0B0B0;
+                    position: sticky;
+                    top: 0;
+                    z-index: 10;
+                }
+                
+                .holdings-table td {
+                    padding: 12px 10px;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    vertical-align: middle;
+                }
+                
+                .holdings-table tr:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+                
+                /* Wallet composition styles */
+                .wallet-composition {
+                    margin: 20px 0;
+                    padding: 15px;
+                    background-color: rgba(0, 0, 0, 0.2);
+                    border-radius: 8px;
+                }
+                
+                .composition-title {
+                    font-weight: 500;
+                    margin-bottom: 10px;
+                    color: #B0B0B0;
+                    text-align: center;
+                }
+                
+                .composition-bar {
+                    height: 24px;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    display: flex;
+                    margin-bottom: 10px;
+                    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+                }
+                
+                .usdt-portion {
+                    height: 100%;
+                    background: linear-gradient(90deg, #2196F3, #03A9F4);
+                }
+                
+                .crypto-portion {
+                    height: 100%;
+                    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+                }
+                
+                .composition-legend {
+                    display: flex;
+                    justify-content: space-around;
+                    margin-top: 10px;
+                }
+                
+                .legend-item {
+                    display: flex;
+                    align-items: center;
+                    font-size: 0.9em;
+                }
+                
+                .usdt-dot, .crypto-dot {
+                    display: inline-block;
+                    width: 12px;
+                    height: 12px;
+                    border-radius: 50%;
+                    margin-right: 6px;
+                }
+                
+                .usdt-dot {
+                    background-color: #2196F3;
+                }
+                
+                .crypto-dot {
+                    background-color: #4CAF50;
+                }
+                
+                /* Enhanced holdings card styles */
+                .holdings-card-header {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 20px;
+                }
+                
+                .holdings-total-value {
+                    font-size: 1.2em;
+                    font-weight: bold;
+                    color: #4CAF50;
+                }
+                
+                .holdings-subtitle {
+                    margin-top: 20px;
+                    margin-bottom: 15px;
+                    color: #B0B0B0;
+                    font-size: 1.1em;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+                    padding-bottom: 8px;
+                }
+                
+                .wallet-summary {
+                    background-color: rgba(0, 0, 0, 0.2);
+                    border-radius: 8px;
+                    padding: 15px;
+                    margin-bottom: 20px;
+                }
+                
+                .wallet-bar {
+                    height: 24px;
+                    border-radius: 12px;
+                    overflow: hidden;
+                    display: flex;
+                    margin-bottom: 15px;
+                    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
+                }
+                
+                .usdt-bar {
+                    height: 100%;
+                    background: linear-gradient(90deg, #2196F3, #03A9F4);
+                }
+                
+                .crypto-bar {
+                    height: 100%;
+                    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+                }
+                
+                .wallet-legend {
+                    display: flex;
+                    justify-content: space-around;
+                }
+                
+                .legend-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+                
+                .legend-label {
+                    color: #B0B0B0;
+                    font-size: 0.9em;
+                }
+                
+                .legend-value {
+                    font-weight: bold;
+                }
+                
+                /* Table cell styles */
+                .asset-cell {
+                    font-weight: 500;
+                }
+                
+                .amount-cell {
+                    font-family: monospace;
+                    text-align: right;
+                }
+                
+                .price-cell, .value-cell {
+                    text-align: right;
+                    font-weight: 500;
+                }
+                
+                .percentage-cell {
+                    width: 150px;
+                }
+                
+                .holding-row.even {
+                    background-color: rgba(255, 255, 255, 0.02);
+                }
+                
+                .holding-row:hover {
+                    background-color: rgba(255, 255, 255, 0.05);
+                }
+                
+                .no-holdings-message {
+                    text-align: center;
+                    color: #B0B0B0;
+                    font-style: italic;
+                    padding: 20px;
                 }
             </style>
         </head>
