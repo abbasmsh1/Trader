@@ -240,7 +240,7 @@ def create_dashboard(trading_system: TradingSystem):
         )
     ], className='container')
     
-    def create_chart(symbol: str, df: pd.DataFrame, show_indicators: List[str] = None) -> go.Figure:
+    def create_chart(symbol: str, df: pd.DataFrame, timeframe: str, show_indicators: List[str] = None) -> go.Figure:
         """Create a chart for a single symbol with technical indicators."""
         fig = go.Figure()
         
@@ -432,7 +432,7 @@ def create_dashboard(trading_system: TradingSystem):
             df = trading_system.data_fetcher.get_historical_data(symbol, timeframe)
             
             # Create chart
-            fig = create_chart(symbol, df, indicators)
+            fig = create_chart(symbol, df, timeframe, indicators)
             
             # Create chart container
             chart_div = html.Div(
