@@ -4,20 +4,24 @@ from typing import Dict, List, Optional
 import pandas as pd
 
 class BaseAgent(ABC):
-    def __init__(self, name: str, risk_tolerance: float = 0.5, timeframe: str = '1h'):
+    def __init__(self, name: str, personality: str, risk_tolerance: float = 0.5, timeframe: str = '1h'):
         """
         Initialize the base trading agent.
         
         Args:
             name (str): Name of the trading agent
+            personality (str): Trading personality description
             risk_tolerance (float): Risk tolerance level between 0 and 1
             timeframe (str): Trading timeframe (e.g., '1h', '4h', '1d')
         """
         self.name = name
+        self.personality = personality
         self.risk_tolerance = max(0.0, min(1.0, risk_tolerance))
         self.timeframe = timeframe
         self.portfolio: Dict[str, float] = {}
         self.trading_history: List[Dict] = []
+        self.strategy_preferences: Dict[str, float] = {}
+        self.market_beliefs: Dict[str, str] = {}
         
     @abstractmethod
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
@@ -90,8 +94,30 @@ class BaseAgent(ABC):
         return {
             'total_trades': total_trades,
             'win_rate': win_rate,
-            'total_return': total_return
+            'total_return': total_return,
+            'personality': self.personality,
+            'strategy': self.strategy_preferences,
+            'market_view': self.market_beliefs
+        }
+    
+    def set_strategy_preferences(self, preferences: Dict[str, float]):
+        """Set agent's strategy preferences."""
+        self.strategy_preferences = preferences
+    
+    def update_market_beliefs(self, beliefs: Dict[str, str]):
+        """Update agent's market beliefs."""
+        self.market_beliefs = beliefs
+    
+    def get_personality_traits(self) -> Dict[str, str]:
+        """Get agent's personality traits and characteristics."""
+        return {
+            'name': self.name,
+            'personality': self.personality,
+            'risk_tolerance': self.risk_tolerance,
+            'preferred_timeframe': self.timeframe,
+            'strategy_preferences': self.strategy_preferences,
+            'market_beliefs': self.market_beliefs
         }
     
     def __str__(self) -> str:
-        return f"Trading Agent: {self.name} (Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe})" 
+        return f"{self.name} ({self.personality}) - Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe}" 
