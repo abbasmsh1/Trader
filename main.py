@@ -141,367 +141,346 @@ def create_dashboard(trading_system: TradingSystem):
             html.P("Real-time cryptocurrency trading signals powered by AI", className='dashboard-subtitle')
         ], className='header'),
         
-        # Main content
-        html.Div([
-            # Left panel - Controls
-            html.Div([
-                html.Div([
-                    html.H3("Trading Controls", className='panel-title'),
-                    html.Label("Select Cryptocurrencies"),
-                    dcc.Dropdown(
-                        id='symbol-multi-dropdown',
-                        options=[{'label': s.replace('/USDT', ''), 'value': s} 
-                                for s in trading_system.symbols],
-                        value=trading_system.symbols[:4],
-                        multi=True,
-                        className='dropdown'
-                    ),
-                    html.Label("Timeframe"),
-                    dcc.Dropdown(
-                        id='timeframe-dropdown',
-                        options=[{'label': v, 'value': k} for k, v in TIMEFRAMES.items()],
-                        value='1h',
-                        className='dropdown'
-                    ),
-                    html.Label("Technical Indicators"),
-                    dcc.Checklist(
-                        id='indicator-checklist',
-                        options=[
-                            {'label': 'Moving Averages', 'value': 'SMA'},
-                            {'label': 'RSI', 'value': 'RSI'},
-                            {'label': 'MACD', 'value': 'MACD'},
-                            {'label': 'Bollinger Bands', 'value': 'BB'}
-                        ],
-                        value=['SMA', 'RSI'],
-                        className='indicator-checklist'
-                    ),
-                    html.Label("Chart Style"),
-                    dcc.RadioItems(
-                        id='chart-style',
-                        options=[
-                            {'label': 'Candlestick', 'value': 'candlestick'},
-                            {'label': 'Line', 'value': 'line'},
-                            {'label': 'OHLC', 'value': 'ohlc'}
-                        ],
-                        value='candlestick',
-                        className='chart-style-radio'
-                    ),
-                    html.Div([
-                        html.Label("Auto Refresh"),
-                        dcc.Checklist(
-                            id='auto-refresh-switch',
-                            options=[{'label': '', 'value': 'enabled'}],
-                            value=['enabled'],
-                            className='auto-refresh-toggle'
-                        )
-                    ], className='switch-container'),
-                    html.Div([
-                        html.Label("Chart Layout"),
-                        dcc.RadioItems(
-                            id='layout-radio',
-                            options=[
-                                {'label': '2x2 Grid', 'value': '2x2'},
-                                {'label': '1x4 Row', 'value': '1x4'},
-                                {'label': '2x3 Grid', 'value': '2x3'}
-                            ],
-                            value='2x2',
-                            className='layout-radio'
-                        )
-                    ], className='layout-container'),
-                    html.Div([
-                        html.Label("Refresh Interval"),
-                        dcc.Slider(
-                            id='refresh-interval-slider',
-                            min=5,
-                            max=60,
-                            step=5,
-                            value=30,
-                            marks={i: f'{i}s' for i in range(5, 61, 5)},
-                            className='refresh-slider'
-                        )
-                    ], className='slider-container')
-                ], className='control-panel'),
-                
-                # Performance Metrics Panel
-                html.Div([
-                    html.H3("Performance Metrics", className='panel-title'),
-                    html.Div(id='performance-metrics', className='metrics-container')
-                ], className='metrics-panel')
-            ], className='left-panel'),
-            
-            # Right panel - Charts and Data
-            html.Div([
-                # Multi-Chart Container
-                html.Div(id='multi-chart-container', className='chart-grid'),
-                
-                # Market Overview
-                html.Div([
-                    html.H3("Market Overview", className='panel-title'),
-                    html.Div(id='market-overview', className='market-overview')
-                ], className='market-panel'),
-                
-                # Trading Signals
-                html.Div([
-                    html.H3("Latest Trading Signals", className='panel-title'),
-                    html.Div(id='signals-table', className='signals-table')
-                ], className='signals-panel')
-            ], className='right-panel')
-        ], className='main-content'),
+        # Navigation tabs
+        dcc.Tabs(id='main-tabs', value='trading-view', className='tabs', children=[
+            dcc.Tab(label='Trading View', value='trading-view', className='tab'),
+            dcc.Tab(label='Traders Comparison', value='traders-comparison', className='tab')
+        ]),
         
-        # Refresh interval
+        # Content container
+        html.Div(id='tab-content', className='content-container'),
+        
+        # Interval component for auto-refresh
         dcc.Interval(
             id='interval-component',
             interval=SYSTEM_PARAMS['dashboard_refresh_rate'],
             n_intervals=0
         )
-    ], className='container')
+    ], className='dashboard')
     
-    def create_chart(symbol: str, df: pd.DataFrame, timeframe: str, show_indicators: List[str] = None) -> go.Figure:
-        """Create a chart for a single symbol with technical indicators."""
-        fig = go.Figure()
-        
-        # Add candlestick chart
-        fig.add_trace(go.Candlestick(
-            x=df.index,
-            open=df['open'],
-            high=df['high'],
-            low=df['low'],
-            close=df['close'],
-            name='Price',
-            yaxis='y'
-        ))
-        
-        # Add volume bars
-        fig.add_trace(go.Bar(
-            x=df.index,
-            y=df['volume'],
-            name='Volume',
-            yaxis='y3',
-            opacity=0.3
-        ))
-        
-        # Calculate and add technical indicators
-        if show_indicators:
-            # Calculate SMA
-            if 'SMA' in show_indicators:
-                df['SMA20'] = ta.trend.sma_indicator(df['close'], window=20)
-                df['SMA50'] = ta.trend.sma_indicator(df['close'], window=50)
-                df['SMA200'] = ta.trend.sma_indicator(df['close'], window=200)
-                
-                fig.add_trace(go.Scatter(x=df.index, y=df['SMA20'], name='SMA20', line=dict(color='#1f77b4')))
-                fig.add_trace(go.Scatter(x=df.index, y=df['SMA50'], name='SMA50', line=dict(color='#ff7f0e')))
-                fig.add_trace(go.Scatter(x=df.index, y=df['SMA200'], name='SMA200', line=dict(color='#2ca02c')))
-            
-            # Calculate RSI
-            if 'RSI' in show_indicators:
-                df['RSI'] = ta.momentum.rsi(df['close'], window=14)
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['RSI'],
-                    name='RSI',
-                    yaxis='y2',
-                    line=dict(color='#d62728')
-                ))
-            
-            # Calculate MACD
-            if 'MACD' in show_indicators:
-                macd = ta.trend.MACD(df['close'])
-                df['MACD'] = macd.macd()
-                df['MACD_signal'] = macd.macd_signal()
-                df['MACD_hist'] = macd.macd_diff()
-                
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['MACD'],
-                    name='MACD',
-                    yaxis='y4',
-                    line=dict(color='#9467bd')
-                ))
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['MACD_signal'],
-                    name='MACD Signal',
-                    yaxis='y4',
-                    line=dict(color='#e377c2')
-                ))
-                fig.add_trace(go.Bar(
-                    x=df.index, y=df['MACD_hist'],
-                    name='MACD Histogram',
-                    yaxis='y4',
-                    marker_color='#17becf'
-                ))
-            
-            # Calculate Bollinger Bands
-            if 'BB' in show_indicators:
-                bollinger = ta.volatility.BollingerBands(df['close'])
-                df['BB_upper'] = bollinger.bollinger_hband()
-                df['BB_lower'] = bollinger.bollinger_lband()
-                df['BB_mid'] = bollinger.bollinger_mavg()
-                
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['BB_upper'],
-                    name='BB Upper',
-                    line=dict(color='rgba(250, 128, 114, 0.5)', dash='dash')
-                ))
-                fig.add_trace(go.Scatter(
-                    x=df.index, y=df['BB_lower'],
-                    name='BB Lower',
-                    line=dict(color='rgba(250, 128, 114, 0.5)', dash='dash'),
-                    fill='tonexty'
-                ))
-        
-        # Update layout with multiple y-axes
-        fig.update_layout(
-            title=f'{symbol.replace("/USDT", "")} Price & Indicators',
-            yaxis=dict(
-                title='Price (USDT)',
-                domain=[0.4, 1]
-            ),
-            yaxis2=dict(
-                title='RSI',
-                domain=[0.2, 0.38],
-                range=[0, 100]
-            ),
-            yaxis3=dict(
-                title='Volume',
-                domain=[0, 0.18]
-            ),
-            yaxis4=dict(
-                title='MACD',
-                domain=[0.2, 0.38]
-            ),
-            height=600,
-            template='plotly_dark',
-            plot_bgcolor=colors['background'],
-            paper_bgcolor=colors['background'],
-            font=dict(color=colors['text']),
-            xaxis_rangeslider_visible=False,
-            margin=dict(l=50, r=50, t=50, b=50),
-            showlegend=True,
-            legend=dict(
-                yanchor="top",
-                y=0.99,
-                xanchor="left",
-                x=0.01,
-                bgcolor='rgba(43, 60, 78, 0.8)'
-            )
-        )
-        
-        # Add price statistics
-        latest = df.iloc[-1]
-        prev_day = df.iloc[-24] if timeframe == '1h' else df.iloc[-1]
-        price_change = (latest['close'] - prev_day['close']) / prev_day['close'] * 100
-        
-        stats_text = f"""
-        Current Price: ${latest['close']:,.2f}
-        24h Change: {price_change:+.2f}%
-        24h High: ${df['high'][-24:].max():,.2f}
-        24h Low: ${df['low'][-24:].min():,.2f}
-        24h Volume: ${df['volume'][-24:].sum():,.0f}
-        """
-        
-        fig.add_annotation(
-            text=stats_text,
-            xref="paper", yref="paper",
-            x=0.99, y=0.99,
-            showarrow=False,
-            font=dict(size=12),
-            bgcolor='rgba(43, 60, 78, 0.8)',
-            bordercolor='rgba(68, 86, 105, 0.8)',
-            borderwidth=1,
-            align='left'
-        )
-        
-        return fig
-    
+    # Callback to render the selected tab content
     @app.callback(
-        [Output('multi-chart-container', 'children'),
-         Output('signals-table', 'children'),
-         Output('performance-metrics', 'children'),
-         Output('market-overview', 'children')],
-        [Input('interval-component', 'n_intervals'),
-         Input('symbol-multi-dropdown', 'value'),
-         Input('timeframe-dropdown', 'value'),
-         Input('layout-radio', 'value'),
-         Input('indicator-checklist', 'value'),
-         Input('chart-style', 'value'),
-         Input('refresh-interval-slider', 'value')],
-        [State('auto-refresh-switch', 'value')]
+        Output('tab-content', 'children'),
+        [Input('main-tabs', 'value')]
     )
-    def update_dashboard(n, symbols, timeframe, layout, indicators, chart_style, refresh_interval, auto_refresh):
-        if not auto_refresh or (n > 0 and 'enabled' not in auto_refresh):
-            raise dash.exceptions.PreventUpdate
-        
-        if not symbols:
-            return (
-                html.Div("Please select at least one cryptocurrency", className='no-data-message'),
-                None,
-                None,
-                None
+    def render_tab_content(tab):
+        if tab == 'trading-view':
+            return create_trading_view(trading_system)
+        elif tab == 'traders-comparison':
+            return create_traders_comparison(trading_system)
+        return html.Div("Tab content not found")
+    
+    def create_trading_view(trading_system):
+        """Create the main trading view layout."""
+        return html.Div([
+            # Main content
+            html.Div([
+                # Left panel - Controls
+                html.Div([
+                    html.Div([
+                        html.H3("Trading Controls", className='panel-title'),
+                        html.Label("Select Cryptocurrencies"),
+                        dcc.Dropdown(
+                            id='symbol-multi-dropdown',
+                            options=[{'label': s.replace('/USDT', ''), 'value': s} 
+                                    for s in trading_system.symbols],
+                            value=trading_system.symbols[:4],
+                            multi=True,
+                            className='dropdown'
+                        ),
+                        html.Label("Timeframe"),
+                        dcc.Dropdown(
+                            id='timeframe-dropdown',
+                            options=[{'label': v, 'value': k} for k, v in TIMEFRAMES.items()],
+                            value='1h',
+                            className='dropdown'
+                        ),
+                        html.Label("Technical Indicators"),
+                        dcc.Checklist(
+                            id='indicator-checklist',
+                            options=[
+                                {'label': 'Moving Averages', 'value': 'SMA'},
+                                {'label': 'RSI', 'value': 'RSI'},
+                                {'label': 'MACD', 'value': 'MACD'},
+                                {'label': 'Bollinger Bands', 'value': 'BB'}
+                            ],
+                            value=['SMA', 'RSI'],
+                            className='indicator-checklist'
+                        ),
+                        html.Label("Chart Style"),
+                        dcc.RadioItems(
+                            id='chart-style',
+                            options=[
+                                {'label': 'Candlestick', 'value': 'candlestick'},
+                                {'label': 'Line', 'value': 'line'},
+                                {'label': 'OHLC', 'value': 'ohlc'}
+                            ],
+                            value='candlestick',
+                            className='chart-style-radio'
+                        ),
+                        html.Div([
+                            html.Label("Auto Refresh"),
+                            dcc.Checklist(
+                                id='auto-refresh-switch',
+                                options=[{'label': '', 'value': 'enabled'}],
+                                value=['enabled'],
+                                className='auto-refresh-toggle'
+                            )
+                        ], className='switch-container'),
+                        html.Div([
+                            html.Label("Chart Layout"),
+                            dcc.RadioItems(
+                                id='layout-radio',
+                                options=[
+                                    {'label': '2x2 Grid', 'value': '2x2'},
+                                    {'label': '1x4 Row', 'value': '1x4'},
+                                    {'label': '2x3 Grid', 'value': '2x3'}
+                                ],
+                                value='2x2',
+                                className='layout-radio'
+                            )
+                        ], className='layout-container'),
+                        html.Div([
+                            html.Label("Refresh Interval"),
+                            dcc.Slider(
+                                id='refresh-interval-slider',
+                                min=5,
+                                max=60,
+                                step=5,
+                                value=30,
+                                marks={i: f'{i}s' for i in range(5, 61, 5)},
+                                className='refresh-slider'
+                            )
+                        ], className='slider-container')
+                    ], className='control-panel'),
+                    
+                    # Performance Metrics Panel
+                    html.Div([
+                        html.H3("Performance Metrics", className='panel-title'),
+                        html.Div(id='performance-metrics', className='metrics-container')
+                    ], className='metrics-panel')
+                ], className='left-panel'),
+                
+                # Right panel - Charts and Data
+                html.Div([
+                    # Multi-Chart Container
+                    html.Div(id='multi-chart-container', className='chart-grid'),
+                    
+                    # Market Overview
+                    html.Div([
+                        html.H3("Market Overview", className='panel-title'),
+                        html.Div(id='market-overview', className='market-overview')
+                    ], className='market-panel'),
+                    
+                    # Trading Signals
+                    html.Div([
+                        html.H3("Latest Trading Signals", className='panel-title'),
+                        html.Div(id='signals-table', className='signals-table')
+                    ], className='signals-panel')
+                ], className='right-panel')
+            ], className='main-content')
+        ])
+    
+    def create_traders_comparison(trading_system):
+        """Create the traders comparison view layout."""
+        return html.Div([
+            html.H2("Traders Performance Comparison", className='section-title'),
+            
+            # Performance metrics cards
+            html.Div(id='traders-performance-cards', className='performance-cards-container'),
+            
+            # Portfolio comparison charts
+            html.Div([
+                html.H3("Portfolio Value Comparison", className='subsection-title'),
+                html.Div(id='portfolio-value-chart', className='comparison-chart')
+            ], className='chart-section'),
+            
+            # Holdings comparison
+            html.Div([
+                html.H3("Holdings Comparison", className='subsection-title'),
+                html.Div(id='holdings-comparison', className='holdings-comparison')
+            ], className='chart-section'),
+            
+            # Trade history comparison
+            html.Div([
+                html.H3("Trade Activity", className='subsection-title'),
+                html.Div(id='trade-activity-comparison', className='trade-activity')
+            ], className='chart-section')
+        ], className='traders-comparison-view')
+    
+    # Callback to update traders comparison view
+    @app.callback(
+        [Output('traders-performance-cards', 'children'),
+         Output('portfolio-value-chart', 'children'),
+         Output('holdings-comparison', 'children'),
+         Output('trade-activity-comparison', 'children')],
+        [Input('interval-component', 'n_intervals')]
+    )
+    def update_traders_comparison(n):
+        """Update the traders comparison view."""
+        try:
+            # Get current prices for all symbols
+            current_prices = {}
+            for symbol in trading_system.symbols:
+                try:
+                    df = trading_system.data_fetcher.get_historical_data(symbol)
+                    if not df.empty:
+                        symbol_base = symbol.split('/')[0]
+                        current_prices[symbol_base] = float(df['close'].iloc[-1])
+                except Exception as e:
+                    print(f"Error getting price for {symbol}: {str(e)}")
+            
+            # Create performance cards for each agent
+            performance_cards = []
+            portfolio_values = []
+            agent_colors = ['#4CAF50', '#2196F3', '#FF9800', '#F44336', '#9C27B0']
+            
+            for i, agent in enumerate(trading_system.agents):
+                # Get wallet metrics
+                metrics = agent.wallet.get_performance_metrics(current_prices)
+                
+                # Store portfolio value for chart
+                portfolio_values.append({
+                    'agent': agent.name,
+                    'value': metrics['total_value_usdt'],
+                    'return': metrics['total_return_pct'],
+                    'color': agent_colors[i % len(agent_colors)]
+                })
+                
+                # Create performance card
+                card = html.Div([
+                    html.H3(agent.name, className='card-title'),
+                    html.Div([
+                        html.Div([
+                            html.Span("Total Value:", className='metric-label'),
+                            html.Span(f"${metrics['total_value_usdt']:.2f}", className='metric-value')
+                        ], className='metric-row'),
+                        html.Div([
+                            html.Span("Return:", className='metric-label'),
+                            html.Span(
+                                f"{metrics['total_return_pct']:.2f}%", 
+                                className=f"metric-value {'positive' if metrics['total_return_pct'] >= 0 else 'negative'}"
+                            )
+                        ], className='metric-row'),
+                        html.Div([
+                            html.Span("USDT Balance:", className='metric-label'),
+                            html.Span(f"${metrics['balance_usdt']:.2f}", className='metric-value')
+                        ], className='metric-row'),
+                        html.Div([
+                            html.Span("Trades:", className='metric-label'),
+                            html.Span(f"{metrics['trade_count']}", className='metric-value')
+                        ], className='metric-row'),
+                        html.Div([
+                            html.Span("Strategy:", className='metric-label'),
+                            html.Span(agent.personality.split(' - ')[0], className='metric-value')
+                        ], className='metric-row')
+                    ], className='card-content')
+                ], className=f'performance-card {agent.name.lower().replace(" ", "-")}', style={'borderColor': agent_colors[i % len(agent_colors)]})
+                
+                performance_cards.append(card)
+            
+            # Create portfolio value comparison chart
+            portfolio_fig = go.Figure()
+            
+            for pv in portfolio_values:
+                portfolio_fig.add_trace(go.Bar(
+                    x=[pv['agent']],
+                    y=[pv['value']],
+                    name=pv['agent'],
+                    marker_color=pv['color'],
+                    text=[f"${pv['value']:.2f}<br>{pv['return']:.2f}%"],
+                    textposition='auto'
+                ))
+            
+            portfolio_fig.update_layout(
+                title='Portfolio Value by Trader',
+                template='plotly_dark',
+                height=400,
+                yaxis_title='Value (USDT)',
+                showlegend=False,
+                margin=dict(l=50, r=50, t=80, b=50)
             )
             
-        # Create charts for each symbol
-        charts = []
-        all_signals = []
-        performance_data = []
-        market_data = []
-        
-        for symbol in symbols:
-            # Get market data
-            df = trading_system.data_fetcher.get_historical_data(symbol, timeframe)
+            portfolio_chart = dcc.Graph(figure=portfolio_fig)
             
-            # Create chart
-            fig = create_chart(symbol, df, timeframe, indicators)
+            # Create holdings comparison
+            holdings_cards = []
             
-            # Create chart container
-            chart_div = html.Div(
-                dcc.Graph(
-                    figure=fig,
-                    config={'displayModeBar': False}
-                ),
-                className=f'chart-container-{layout}'
-            )
-            charts.append(chart_div)
+            for i, agent in enumerate(trading_system.agents):
+                metrics = agent.wallet.get_performance_metrics(current_prices)
+                holdings = metrics['holdings']
+                
+                if not holdings:
+                    holdings_card = html.Div([
+                        html.H4(agent.name, className='holdings-card-title'),
+                        html.P("No holdings", className='no-holdings')
+                    ], className='holdings-card')
+                else:
+                    holdings_items = []
+                    for symbol, amount in holdings.items():
+                        value = amount * current_prices.get(symbol, 0)
+                        holdings_items.append(html.Div([
+                            html.Span(f"{symbol}:", className='holding-symbol'),
+                            html.Span(f"{amount:.6f}", className='holding-amount'),
+                            html.Span(f"(${value:.2f})", className='holding-value')
+                        ], className='holding-item'))
+                    
+                    holdings_card = html.Div([
+                        html.H4(agent.name, className='holdings-card-title'),
+                        html.Div(holdings_items, className='holdings-list')
+                    ], className='holdings-card')
+                
+                holdings_cards.append(holdings_card)
             
-            # Get signals for this symbol
-            recent_signals = [s for s in trading_system.signals_history 
-                            if s['symbol'] == symbol][-3:]
-            all_signals.extend(recent_signals)
+            # Create trade activity comparison
+            trade_activity_cards = []
             
-            # Calculate performance metrics
-            latest = df.iloc[-1]
-            prev_day = df.iloc[-24] if timeframe == '1h' else df.iloc[-1]
-            price_change = (latest['close'] - prev_day['close']) / prev_day['close'] * 100
+            for i, agent in enumerate(trading_system.agents):
+                trade_history = agent.wallet.get_trade_history_df()
+                
+                if trade_history.empty:
+                    trade_card = html.Div([
+                        html.H4(agent.name, className='trade-card-title'),
+                        html.P("No trades executed", className='no-trades')
+                    ], className='trade-card')
+                else:
+                    # Calculate trade statistics
+                    buy_count = len(trade_history[trade_history['action'] == 'BUY'])
+                    sell_count = len(trade_history[trade_history['action'] == 'SELL'])
+                    
+                    # Create trade summary
+                    trade_card = html.Div([
+                        html.H4(agent.name, className='trade-card-title'),
+                        html.Div([
+                            html.Div([
+                                html.Span("Total Trades:", className='trade-stat-label'),
+                                html.Span(f"{len(trade_history)}", className='trade-stat-value')
+                            ], className='trade-stat'),
+                            html.Div([
+                                html.Span("Buys:", className='trade-stat-label'),
+                                html.Span(f"{buy_count}", className='trade-stat-value buy')
+                            ], className='trade-stat'),
+                            html.Div([
+                                html.Span("Sells:", className='trade-stat-label'),
+                                html.Span(f"{sell_count}", className='trade-stat-value sell')
+                            ], className='trade-stat'),
+                            html.Div([
+                                html.Span("Last Trade:", className='trade-stat-label'),
+                                html.Span(
+                                    f"{trade_history['action'].iloc[-1]} {trade_history['symbol'].iloc[-1]}", 
+                                    className=f"trade-stat-value {trade_history['action'].iloc[-1].lower()}"
+                                ) if not trade_history.empty else html.Span("None", className='trade-stat-value')
+                            ], className='trade-stat')
+                        ], className='trade-stats')
+                    ], className='trade-card')
+                
+                trade_activity_cards.append(trade_card)
             
-            performance_data.append({
-                'symbol': symbol.replace('/USDT', ''),
-                'price': latest['close'],
-                'change_24h': price_change,
-                'volume_24h': df['volume'][-24:].sum(),
-                'high_24h': df['high'][-24:].max(),
-                'low_24h': df['low'][-24:].min()
-            })
+            return performance_cards, portfolio_chart, holdings_cards, trade_activity_cards
             
-            # Calculate market metrics
-            volatility = df['close'].pct_change().std() * 100
-            avg_volume = df['volume'].mean()
-            market_data.append({
-                'symbol': symbol.replace('/USDT', ''),
-                'volatility': volatility,
-                'avg_volume': avg_volume,
-                'trend': 'Bullish' if price_change > 0 else 'Bearish'
-            })
-        
-        # Create the chart grid
-        chart_grid = html.Div(charts, className=f'chart-grid-{layout}')
-        
-        # Create signals table
-        signals_table = create_signals_table(all_signals)
-        
-        # Create performance metrics
-        performance_metrics = create_performance_metrics(performance_data)
-        
-        # Create market overview
-        market_overview = create_market_overview(market_data)
-        
-        return chart_grid, signals_table, performance_metrics, market_overview
+        except Exception as e:
+            print(f"Error updating traders comparison: {str(e)}")
+            return [], html.Div(f"Error: {str(e)}"), [], []
     
     def create_signals_table(signals):
         return html.Table([
