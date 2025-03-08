@@ -1,9 +1,8 @@
-import os
 from typing import List, Dict
 import pandas as pd
-from datetime import datetime, timedelta
-import time
+from main import TradingSystem
 from data.market_data import MarketDataFetcher
+from agents.futures_wallet import FuturesWallet
 from agents.value_investor import ValueInvestor
 from agents.tech_disruptor import TechDisruptor
 from agents.trend_follower import TrendFollower
@@ -15,21 +14,16 @@ from dash import dcc, html, callback_context
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
+from datetime import datetime
+import os
+import time
+import pickle
 from threading import Thread, Lock
-import plotly.io as pio
-from config.settings import DEFAULT_SYMBOLS, SYSTEM_PARAMS, TIMEFRAMES
-import ta
-from plotly.subplots import make_subplots
-from agents.wallet import Wallet
 
-# Set default plotly theme
-pio.templates.default = "plotly_dark"
-
-class TradingSystem:
-    def __init__(self, symbols: List[str] = None):
-        """
-        Initialize the trading system with personality-based agents.
-        """
+class FuturesTradingSystem:
+    def __init__(self, symbols: List[str] = None, leverage: float = 3.0):
+        """Initialize the futures trading system with leveraged trading."""
+        self.leverage = leverage
         self.data_fetcher = MarketDataFetcher()
         
         # Default symbols including USDT pairs and coin-to-coin pairs
@@ -37,14 +31,8 @@ class TradingSystem:
             # Major coins
             'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT',
             
-            # Coin-to-coin pairs
-            'BTC/ETH', 'ETH/BTC', 'BNB/BTC', 'SOL/BTC',
-            
             # AI and Gaming tokens
             'ARKM/USDT', 'AGIX/USDT', 'IMX/USDT', 'RNDR/USDT',
-            
-            # Meme coins
-            'DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT',
             
             # Alt coins
             'DOT/USDT', 'AVAX/USDT', 'LINK/USDT', 'MATIC/USDT', 'XRP/USDT',
@@ -53,18 +41,18 @@ class TradingSystem:
         
         self.symbols = symbols or default_symbols
         
-        # Initialize trading agents with different personalities
+        # Initialize futures-enabled trading agents
         self.agents = [
-            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
-            TechDisruptor(name="Elon Musk AI", timeframe='1h'),
-            ContrarianTrader(name="Michael Burry AI", timeframe='1d'),
-            MacroTrader(name="Ray Dalio AI", timeframe='1d'),
-            SwingTrader(name="Jesse Livermore AI", timeframe='4h'),
-            TrendFollower(name="Paul Tudor Jones AI", risk_tolerance=0.8, timeframe='4h')
+            ValueInvestor(name="Warren Buffett AI (Futures)", timeframe='1d'),
+            TechDisruptor(name="Elon Musk AI (Futures)", timeframe='1h'),
+            ContrarianTrader(name="Michael Burry AI (Futures)", timeframe='1d'),
+            MacroTrader(name="Ray Dalio AI (Futures)", timeframe='1d'),
+            SwingTrader(name="Jesse Livermore AI (Futures)", timeframe='4h'),
+            TrendFollower(name="Paul Tudor Jones AI (Futures)", risk_tolerance=0.8, timeframe='4h')
         ]
         
-        # Add and configure high-risk trader
-        high_risk_trader = TrendFollower(name="High-Risk Trader", risk_tolerance=1.0, timeframe='1h')
+        # Add and configure high-risk futures trader
+        high_risk_trader = TrendFollower(name="High-Risk Trader (Futures)", risk_tolerance=1.0, timeframe='1h')
         high_risk_trader.set_strategy_preferences({
             'value_investing': 0.1,
             'momentum_trading': 1.0,
@@ -79,6 +67,12 @@ class TradingSystem:
         })
         self.agents.append(high_risk_trader)
         
+        # Initialize futures wallets
+        for agent in self.agents:
+            agent.wallet = FuturesWallet(initial_balance_usdt=20.0, leverage=self.leverage)
+            agent.wallet.positions = {}
+            agent.wallet.trades_history = []
+        
         self.signals_history = []
         self.market_data_cache = {}
         self.last_update = {}
@@ -90,12 +84,6 @@ class TradingSystem:
         # Thread safety
         self.lock = Lock()
         
-        # Initialize wallets
-        for agent in self.agents:
-            agent.wallet = Wallet(initial_balance_usdt=20.0)
-            agent.wallet.holdings = {}
-            agent.wallet.trades_history = []
-        
         self.discussions = []  # Store agent discussions
         
         # Load saved state if available
@@ -104,9 +92,8 @@ class TradingSystem:
     def _load_state(self):
         """Load saved state from disk if available."""
         try:
-            state_file = os.path.join(os.path.dirname(__file__), 'data', 'trading_state.pkl')
+            state_file = os.path.join(os.path.dirname(__file__), 'data', 'futures_trading_state.pkl')  # Separate state file
             if os.path.exists(state_file):
-                import pickle
                 with open(state_file, 'rb') as f:
                     state = pickle.load(f)
                     
@@ -117,17 +104,17 @@ class TradingSystem:
                 for i, agent_state in enumerate(state.get('agents', [])):
                     if i < len(self.agents):
                         self.agents[i].wallet.balance_usdt = agent_state.get('balance_usdt', 20.0)
-                        self.agents[i].wallet.holdings = agent_state.get('holdings', {})
+                        self.agents[i].wallet.positions = agent_state.get('positions', {})
                         self.agents[i].wallet.trades_history = agent_state.get('trades_history', [])
                 
                 # Restore holdings history
                 self.holdings_history = state.get('holdings_history', {agent.name: [] for agent in self.agents})
                 
-                print(f"Loaded saved state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
+                print(f"Loaded saved futures state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
             else:
-                print("No saved state found, starting fresh")
+                print("No saved futures state found, starting fresh")
         except Exception as e:
-            print(f"Error loading saved state: {str(e)}")
+            print(f"Error loading futures state: {str(e)}")
             
     def _save_state(self):
         """Save current state to disk."""
@@ -136,7 +123,7 @@ class TradingSystem:
             data_dir = os.path.join(os.path.dirname(__file__), 'data')
             os.makedirs(data_dir, exist_ok=True)
             
-            state_file = os.path.join(data_dir, 'trading_state.pkl')
+            state_file = os.path.join(data_dir, 'futures_trading_state.pkl')  # Separate state file
             
             # Prepare state to save
             state = {
@@ -145,7 +132,7 @@ class TradingSystem:
                     {
                         'name': agent.name,
                         'balance_usdt': agent.wallet.balance_usdt,
-                        'holdings': agent.wallet.holdings,
+                        'positions': agent.wallet.positions,
                         'trades_history': agent.wallet.trades_history
                     }
                     for agent in self.agents
@@ -155,251 +142,98 @@ class TradingSystem:
             }
             
             # Save to file
-            import pickle
             with open(state_file, 'wb') as f:
                 pickle.dump(state, f)
                 
-            print(f"Saved trading state to {state_file}")
+            print(f"Saved futures trading state to {state_file}")
         except Exception as e:
-            print(f"Error saving state: {str(e)}")
+            print(f"Error saving futures state: {str(e)}")
             
-    def _make_initial_btc_purchase(self):
-        """Make an initial purchase of BTC for all agents."""
-        try:
-            # Get current BTC price
-            btc_data = self.get_market_data("BTC/USDT")
-            if btc_data.empty:
-                print("Could not get BTC price for initial purchase")
-                return
-                
-            btc_price = float(btc_data['close'].iloc[-1])
-            print(f"Making initial BTC purchase at ${btc_price:.2f}")
-            
-            # Each agent buys BTC with 80% of their initial balance
-            for agent in self.agents:
-                initial_usdt = agent.wallet.balance_usdt
-                purchase_amount = initial_usdt * 0.8  # Use 80% of initial balance
-                
-                success = agent.wallet.execute_buy("BTC/USDT", purchase_amount, btc_price)
-                if success:
-                    btc_amount = purchase_amount / btc_price
-                    print(f"🔄 {agent.name} made initial BTC purchase: {btc_amount:.8f} BTC (${purchase_amount:.2f})")
-                    
-                    # Get personality traits
-                    personality_traits = agent.get_personality_traits()
-                    
-                    # Add to signals history
-                    self.signals_history.append({
-                        'agent': agent.name,
-                        'personality': personality_traits['personality'],
-                        'symbol': "BTC/USDT",
-                        'signal': {
-                            'action': 'STRONG_BUY', 
-                            'confidence': 0.8, 
-                            'reason': 'Initial purchase to grow $20 to $100'
-                        },
-                        'risk_tolerance': agent.risk_tolerance,
-                        'strategy': personality_traits,
-                        'market_view': personality_traits.get('market_beliefs', {}),
-                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC/USDT': btc_price}),
-                        'trade_executed': True,
-                        'timestamp': datetime.now().timestamp()
-                    })
-                else:
-                    print(f"❌ {agent.name} failed to make initial BTC purchase")
-                    
-            # Set more aggressive trading strategies for all agents
-            self._set_aggressive_strategies()
-                
-        except Exception as e:
-            print(f"Error making initial BTC purchase: {str(e)}")
-            
-    def _set_aggressive_strategies(self):
-        """Set more aggressive trading strategies for all agents to reach $100 goal faster."""
-        for agent in self.agents:
-            # Update strategy preferences to be more aggressive
-            agent.set_strategy_preferences({
-                'value_investing': 0.3,
-                'momentum_trading': 0.8,
-                'trend_following': 0.9,
-                'swing_trading': 0.7,
-                'scalping': 0.6
-            })
-            
-            # Update market beliefs to be more optimistic
-            agent.update_market_beliefs({
-                'market_trend': 'strongly_bullish',
-                'volatility_expectation': 'high',
-                'risk_assessment': 'opportunity'
-            })
-            
-            print(f"Set aggressive trading strategy for {agent.name}")
-        
     def get_market_data(self, symbol: str) -> pd.DataFrame:
         """Get market data with caching."""
         try:
             current_time = time.time()
-            cache_ttl = SYSTEM_PARAMS.get('cache_ttl', 60)  # 1 minute default TTL
+            cache_ttl = 60  # 1 minute default TTL
             
             with self.lock:
                 # Check if we have cached data that's still fresh
                 if (symbol in self.market_data_cache and 
                     symbol in self.last_update and 
                     current_time - self.last_update[symbol] < cache_ttl):
-                    print(f"Using cached data for {symbol}")
+                    print(f"Using cached futures data for {symbol}")
                     return self.market_data_cache[symbol]
                 
                 # If not, fetch new data
-                print(f"Fetching new data for {symbol}")
-                
-                # For coin-to-coin pairs, we need to calculate the ratio
-                if '/' in symbol and not symbol.endswith('/USDT'):
-                    base, quote = symbol.split('/')
-                    
-                    # Get data for both coins in USDT
-                    base_data = self.data_fetcher.fetch_market_data(f"{base}/USDT")
-                    quote_data = self.data_fetcher.fetch_market_data(f"{quote}/USDT")
-                    
-                    if base_data.empty or quote_data.empty:
-                        print(f"Could not fetch data for {symbol}")
-                        return pd.DataFrame()
-                    
-                    # Ensure both dataframes have the same timestamps
-                    common_index = base_data.index.intersection(quote_data.index)
-                    base_data = base_data.loc[common_index]
-                    quote_data = quote_data.loc[common_index]
-                    
-                    # Calculate the ratio for OHLCV
-                    df = pd.DataFrame(index=common_index)
-                    df['open'] = base_data['open'] / quote_data['open']
-                    df['high'] = base_data['high'] / quote_data['low']  # Max ratio possible
-                    df['low'] = base_data['low'] / quote_data['high']   # Min ratio possible
-                    df['close'] = base_data['close'] / quote_data['close']
-                    df['volume'] = base_data['volume'] * base_data['close']  # Volume in base currency value
-                    
-                    print(f"Successfully calculated {symbol} ratio: {len(df)} rows")
-                else:
-                    # Regular USDT pair
-                    df = self.data_fetcher.fetch_market_data(symbol)
-                    print(f"Successfully fetched data for {symbol}: {len(df)} rows")
+                print(f"Fetching new futures data for {symbol}")
+                df = self.data_fetcher.fetch_market_data(symbol)
                 
                 if not df.empty:
                     self.market_data_cache[symbol] = df
                     self.last_update[symbol] = current_time
+                    print(f"Successfully fetched futures data for {symbol}: {len(df)} rows")
                 
                 return df
         except Exception as e:
-            print(f"Error in get_market_data for {symbol}: {str(e)}")
+            print(f"Error in get_market_data for futures {symbol}: {str(e)}")
             return pd.DataFrame()
             
-    def generate_discussion(self, signals: List[Dict]) -> str:
-        """Generate a discussion between agents about their trading signals."""
-        if not signals:
-            return ""
-            
-        try:
-            # Group signals by action type
-            bullish_agents = [s for s in signals if s['signal']['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']]
-            bearish_agents = [s for s in signals if s['signal']['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']]
-            neutral_agents = [s for s in signals if s['signal']['action'] in ['HOLD', 'WATCH']]
-            
-            symbol = signals[0]['symbol']
-            discussion = []
-            
-            # Start with a bullish perspective if any
-            if bullish_agents:
-                bull = bullish_agents[0]
-                discussion.append(f"{bull['agent']}: I'm seeing a strong opportunity in {symbol}. "
-                               f"My {bull['personality']} approach suggests {bull['signal']['action']} "
-                               f"with {bull['signal']['confidence']:.0%} confidence. {bull['signal'].get('reason', '')}")
+    def run(self, interval: int = 300):  # 5 minutes default interval
+        """Run the futures trading system continuously."""
+        print("Starting futures trading system...")
+        last_save_time = time.time()
+        last_record_time = time.time()
+        save_interval = 300  # Save state every 5 minutes
+        record_interval = 60  # Record holdings every 1 minute
+        
+        while True:
+            try:
+                for symbol in self.symbols:
+                    print(f"\nProcessing futures {symbol}...")
+                    self.analyze_market(symbol)
                 
-                # Add supporting or opposing views
-                if len(bullish_agents) > 1:
-                    supporter = bullish_agents[1]
-                    discussion.append(f"{supporter['agent']}: I agree! {supporter['signal'].get('reason', 'The technical indicators are aligning.')}")
+                # Record holdings periodically
+                current_time = time.time()
+                if current_time - last_record_time > record_interval:
+                    self.record_holdings()
+                    last_record_time = current_time
+                    print("Recorded futures trader holdings")
                 
-            # Add bearish perspective
-            if bearish_agents:
-                bear = bearish_agents[0]
-                discussion.append(f"{bear['agent']}: I disagree. {bear['signal'].get('reason', 'The risks are too high.')} "
-                               f"I'm {bear['signal']['action']} with {bear['signal']['confidence']:.0%} confidence.")
+                # Save state periodically
+                if current_time - last_save_time > save_interval:
+                    self._save_state()
+                    last_save_time = current_time
+                    print("Saved futures trading system state")
                 
-            # Add neutral perspective
-            if neutral_agents:
-                neutral = neutral_agents[0]
-                discussion.append(f"{neutral['agent']}: Let's not be hasty. {neutral['signal'].get('reason', 'The market needs more time to show its direction.')}")
+                print(f"Sleeping for {interval} seconds...")
+                time.sleep(interval)
+            except KeyboardInterrupt:
+                print("\nFutures trading system stopped by user")
+                self._save_state()  # Save state before exiting
+                break
+            except Exception as e:
+                print(f"Error in futures trading system run loop: {str(e)}")
+                time.sleep(10)  # Wait a bit before retrying
                 
-            # Add a concluding remark from a high-performing agent
-            top_agent = max(signals, key=lambda x: x.get('wallet_metrics', {}).get('total_value_usdt', 0))
-            discussion.append(f"{top_agent['agent']}: Based on my performance so far (${top_agent['wallet_metrics']['total_value_usdt']:.2f}), "
-                           f"I'm sticking to my {top_agent['signal']['action']} position.")
-            
-            # Add the discussion to history
-            self.discussions.append({
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'discussion': discussion
-            })
-            
-            return discussion
-        except Exception as e:
-            print(f"Error generating discussion: {str(e)}")
-            return []
-            
     def analyze_market(self, symbol: str) -> List[Dict]:
-        """Analyze market data using all agents with a focus on reaching $100 goal."""
+        """Analyze market data using all futures agents."""
         try:
-            print(f"Starting market analysis for {symbol}")
+            print(f"Starting futures market analysis for {symbol}")
             market_data = self.get_market_data(symbol)
             if market_data.empty:
-                print(f"No market data available for {symbol}")
+                print(f"No futures market data available for {symbol}")
                 return []
             
             market_data.name = symbol
             current_price = float(market_data['close'].iloc[-1])
+            print(f"Current futures price for {symbol}: {current_price}")
             
             # Create a dictionary of current prices for all crypto assets
-            # For coin-to-coin pairs, we need both coins
-            if '/' in symbol:
-                base_currency, quote_currency = symbol.split('/')
-                
-                # For USDT pairs, the quote is USDT
-                if quote_currency == 'USDT':
-                    current_prices = {base_currency: current_price}
-                else:
-                    # For coin-to-coin pairs, we need to get both prices in USDT
-                    base_usdt_data = self.get_market_data(f"{base_currency}/USDT")
-                    quote_usdt_data = self.get_market_data(f"{quote_currency}/USDT")
-                    
-                    if not base_usdt_data.empty and not quote_usdt_data.empty:
-                        base_price = float(base_usdt_data['close'].iloc[-1])
-                        quote_price = float(quote_usdt_data['close'].iloc[-1])
-                        
-                        current_prices = {
-                            base_currency: base_price,
-                            quote_currency: quote_price
-                        }
-                    else:
-                        current_prices = {}
-            else:
-                # Fallback for any other format
-                current_prices = {}
-            
-            # Add prices for other symbols in the portfolio
-            for other_symbol in self.symbols:
-                if other_symbol != symbol and other_symbol.endswith('/USDT'):
-                    other_data = self.get_market_data(other_symbol)
-                    if not other_data.empty:
-                        other_base = other_symbol.split('/')[0]
-                        other_price = float(other_data['close'].iloc[-1])
-                        current_prices[other_base] = other_price
-            
-            print(f"Current price for {symbol}: {current_price}")
+            current_prices = {symbol: current_price}
             
             signals = []
             for agent in self.agents:
                 try:
-                    print(f"Agent {agent.name} analyzing {symbol}")
+                    print(f"Futures agent {agent.name} analyzing {symbol}")
                     analysis = agent.analyze_market(market_data)
                     signal = agent.generate_signal(analysis)
                     
@@ -413,7 +247,6 @@ class TradingSystem:
                     
                     # Adjust strategy based on progress toward goal
                     if total_value < 40:  # Less than $40, be very aggressive
-                        # Increase confidence for buy signals
                         if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
                             signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
                             signal['reason'] += " (Boosted: Aggressive growth strategy to reach $100)"
@@ -429,7 +262,11 @@ class TradingSystem:
                     # Execute trade if auto-trading is enabled
                     trade_executed = False
                     if self.auto_trading_enabled:
-                        trade_executed = agent.execute_trade(symbol, signal, current_price)
+                        if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                            trade_executed = agent.wallet.open_long(symbol, total_value * 0.1, current_price)  # Use 10% of total value
+                        elif signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+                            trade_executed = agent.wallet.open_short(symbol, total_value * 0.1, current_price)  # Use 10% of total value
+                        
                         if trade_executed:
                             print(f"🔄 {agent.name} executed {signal['action']} for {symbol} at ${current_price:.2f}")
                             print(f"   Wallet value: ${total_value:.2f} / $100.00 goal ({total_value/100*100:.1f}%)")
@@ -452,82 +289,155 @@ class TradingSystem:
                         'wallet_metrics': wallet_metrics,
                         'trade_executed': trade_executed,
                         'timestamp': datetime.now().timestamp(),
-                        'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"  # Progress toward $100
+                        'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"
                     })
-                    print(f"Signal generated by {agent.name} for {symbol}: {signal['action']}")
+                    print(f"Futures signal generated by {agent.name} for {symbol}: {signal['action']}")
                 except Exception as e:
-                    print(f"Error with agent {agent.name} for {symbol}: {str(e)}")
+                    print(f"Error with futures agent {agent.name} for {symbol}: {str(e)}")
                     continue
             
             # Generate discussion about the signals
             if signals:
                 discussion = self.generate_discussion(signals)
-                print("\nAgent Discussion:")
+                print("\nFutures Agent Discussion:")
                 for message in discussion:
                     print(message)
                 print()
             
             return signals
         except Exception as e:
-            print(f"Error in analyze_market for {symbol}: {str(e)}")
+            print(f"Error in analyze_market for futures {symbol}: {str(e)}")
             return []
-    
-    def toggle_auto_trading(self, enabled: bool) -> None:
-        """Enable or disable automatic trading."""
-        self.auto_trading_enabled = enabled
-        status = "enabled" if enabled else "disabled"
-        print(f"Auto-trading {status}")
-        
-    def run(self, interval: int = SYSTEM_PARAMS['update_interval']):
-        """
-        Run the trading system continuously.
-        
-        Args:
-            interval (int): Update interval in seconds
-        """
-        print("Starting trading system...")
-        last_save_time = time.time()
-        last_record_time = time.time()
-        save_interval = 300  # Save state every 5 minutes
-        record_interval = 60  # Record holdings every 1 minute
-        
-        while True:
-            try:
-                for symbol in self.symbols:
-                    print(f"\nProcessing {symbol}...")
-                    signals = self.analyze_market(symbol)
-                    if signals:
-                        # Add to signals history
-                        self.signals_history.extend(signals)
-                        # Keep only the most recent 1000 signals
-                        if len(self.signals_history) > 1000:
-                            self.signals_history = self.signals_history[-1000:]
+            
+    def generate_discussion(self, signals: List[Dict]) -> List[str]:
+        """Generate a discussion between futures agents about their trading signals."""
+        if not signals:
+            return []
+            
+        try:
+            # Group signals by action type
+            bullish_agents = [s for s in signals if s['signal']['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']]
+            bearish_agents = [s for s in signals if s['signal']['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']]
+            neutral_agents = [s for s in signals if s['signal']['action'] in ['HOLD', 'WATCH']]
+            
+            symbol = signals[0]['symbol']
+            discussion = []
+            
+            # Start with a bullish perspective if any
+            if bullish_agents:
+                bull = bullish_agents[0]
+                discussion.append(f"{bull['agent']}: I'm seeing a strong opportunity in {symbol} futures. "
+                               f"My {bull['personality']} approach suggests {bull['signal']['action']} "
+                               f"with {bull['signal']['confidence']:.0%} confidence. {bull['signal'].get('reason', '')}")
                 
-                # Record holdings periodically
-                current_time = time.time()
-                if current_time - last_record_time > record_interval:
-                    self.record_holdings()
-                    last_record_time = current_time
-                    print("Recorded trader holdings")
+                # Add supporting or opposing views
+                if len(bullish_agents) > 1:
+                    supporter = bullish_agents[1]
+                    discussion.append(f"{supporter['agent']}: I agree! {supporter['signal'].get('reason', 'The technical indicators are aligning.')}")
                 
-                # Save state periodically
-                if current_time - last_save_time > save_interval:
-                    self._save_state()
-                    last_save_time = current_time
-                    print("Saved trading system state")
+            # Add bearish perspective
+            if bearish_agents:
+                bear = bearish_agents[0]
+                discussion.append(f"{bear['agent']}: I disagree. {bear['signal'].get('reason', 'The risks are too high.')} "
+                               f"I'm {bear['signal']['action']} with {bear['signal']['confidence']:.0%} confidence.")
                 
-                print(f"Sleeping for {interval} seconds...")
-                time.sleep(interval)
-            except KeyboardInterrupt:
-                print("\nTrading system stopped by user")
-                self._save_state()  # Save state before exiting
-                break
-            except Exception as e:
-                print(f"Error in trading system run loop: {str(e)}")
-                time.sleep(10)  # Wait a bit before retrying
-    
+            # Add neutral perspective
+            if neutral_agents:
+                neutral = neutral_agents[0]
+                discussion.append(f"{neutral['agent']}: Let's not be hasty. {neutral['signal'].get('reason', 'The market needs more time to show its direction.')}")
+                
+            # Add a concluding remark from a high-performing agent
+            top_agent = max(signals, key=lambda x: x.get('wallet_metrics', {}).get('total_value_usdt', 0))
+            discussion.append(f"{top_agent['agent']}: Based on my performance so far (${top_agent['wallet_metrics']['total_value_usdt']:.2f}), "
+                           f"I'm sticking to my {top_agent['signal']['action']} position with {self.leverage}x leverage.")
+            
+            # Add the discussion to history
+            self.discussions.append({
+                'timestamp': datetime.now(),
+                'symbol': symbol,
+                'discussion': discussion
+            })
+            
+            return discussion
+        except Exception as e:
+            print(f"Error generating futures discussion: {str(e)}")
+            return []
+            
+    def _reset_agents(self):
+        """Reset all agents with futures wallets."""
+        print("Resetting all futures trading agents to initial state...")
+        for agent in self.agents:
+            agent.wallet = FuturesWallet(initial_balance_usdt=20.0, leverage=self.leverage)
+            agent.wallet.positions = {}
+            agent.wallet.trades_history = []
+            print(f"Reset {agent.name}'s futures wallet to $20.0 USDT with {self.leverage}x leverage")
+            
+        # Clear signals history
+        self.signals_history = []
+        
+        # Clear holdings history
+        self.holdings_history = {agent.name: [] for agent in self.agents}
+        
+        # Clear discussions
+        self.discussions = []
+        
+        # Save the reset state
+        self._save_state()
+        print("Futures trading system reset complete!")
+        
+    def _make_initial_btc_purchase(self):
+        """Make an initial long position in BTC futures for all agents."""
+        try:
+            # Get current BTC price
+            btc_data = self.get_market_data("BTC/USDT")
+            if btc_data.empty:
+                print("Could not get BTC price for initial position")
+                return
+                
+            btc_price = float(btc_data['close'].iloc[-1])
+            print(f"Opening initial BTC long position at ${btc_price:.2f}")
+            
+            # Each agent opens a long position with 80% of their initial balance
+            for agent in self.agents:
+                initial_usdt = agent.wallet.balance_usdt
+                position_amount = initial_usdt * 0.8  # Use 80% of initial balance
+                
+                success = agent.wallet.open_long("BTC/USDT", position_amount, btc_price)
+                if success:
+                    position_size = (position_amount * self.leverage) / btc_price
+                    print(f"🔄 {agent.name} opened initial BTC long: {position_size:.8f} BTC (${position_amount:.2f} margin, {self.leverage}x leverage)")
+                    
+                    # Get personality traits
+                    personality_traits = agent.get_personality_traits()
+                    
+                    # Add to signals history
+                    self.signals_history.append({
+                        'agent': agent.name,
+                        'personality': personality_traits['personality'],
+                        'symbol': "BTC/USDT",
+                        'signal': {
+                            'action': 'STRONG_BUY',
+                            'confidence': 0.8,
+                            'reason': f'Initial long position to grow $20 to $100 with {self.leverage}x leverage'
+                        },
+                        'risk_tolerance': agent.risk_tolerance,
+                        'strategy': personality_traits,
+                        'market_view': personality_traits.get('market_beliefs', {}),
+                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC/USDT': btc_price}),
+                        'trade_executed': True,
+                        'timestamp': datetime.now().timestamp()
+                    })
+                else:
+                    print(f"❌ {agent.name} failed to open initial BTC long position")
+                    
+            # Set more aggressive trading strategies for all agents
+            self._set_aggressive_strategies()
+                
+        except Exception as e:
+            print(f"Error opening initial BTC position: {str(e)}")
+            
     def record_holdings(self):
-        """Record current holdings for each trader."""
+        """Record current holdings and positions for each trader."""
         try:
             # Get current prices for all symbols
             current_prices = {}
@@ -546,98 +456,63 @@ class TradingSystem:
             for agent in self.agents:
                 metrics = agent.wallet.get_performance_metrics(current_prices)
                 
-                # Calculate crypto holdings value (only for non-dust amounts)
-                crypto_value = metrics['total_value_usdt'] - metrics['balance_usdt']
-                
-                # Record holdings snapshot (filtering out dust amounts)
+                # Record holdings snapshot
                 holdings_snapshot = {
                     'timestamp': timestamp,
                     'total_value_usdt': metrics['total_value_usdt'],
                     'balance_usdt': metrics['balance_usdt'],
-                    'crypto_value_usdt': crypto_value,
-                    'holdings': {
+                    'unrealized_pnl': metrics['unrealized_pnl'],
+                    'margin_used': metrics['margin_used'],
+                    'available_margin': metrics['available_margin'],
+                    'positions': {
                         symbol: {
-                            'amount': amount,
-                            'price_usdt': current_prices.get(symbol.split('/')[0] if '/' in symbol else symbol, 0),
-                            'value_usdt': amount * current_prices.get(symbol.split('/')[0] if '/' in symbol else symbol, 0)
+                            'size': pos['size'],
+                            'entry_price': pos['entry_price'],
+                            'current_price': current_prices.get(symbol.split('/')[0], 0),
+                            'liquidation_price': pos['liquidation_price'],
+                            'is_long': pos['is_long'],
+                            'margin': pos['margin'],
+                            'unrealized_pnl': (current_prices.get(symbol.split('/')[0], 0) - pos['entry_price']) * pos['size'] if pos['is_long'] else (pos['entry_price'] - current_prices.get(symbol.split('/')[0], 0)) * abs(pos['size'])
                         }
-                        for symbol, amount in metrics['holdings'].items()
-                        if amount > 1e-8  # Only include non-dust amounts
+                        for symbol, pos in metrics['positions'].items()
                     }
                 }
                 
                 # Add to holdings history
                 self.holdings_history[agent.name].append(holdings_snapshot)
                 
-                # Keep only the last 1000 records to prevent excessive memory usage
+                # Keep only the last 1000 records
                 if len(self.holdings_history[agent.name]) > 1000:
                     self.holdings_history[agent.name] = self.holdings_history[agent.name][-1000:]
                     
-            print(f"Recorded holdings for {len(self.agents)} traders at {timestamp}")
+            print(f"Recorded futures positions for {len(self.agents)} traders at {timestamp}")
         except Exception as e:
-            print(f"Error recording holdings: {str(e)}")
+            print(f"Error recording futures positions: {str(e)}")
             
-    def get_holdings_history(self, agent_name: str, timeframe: str = 'all') -> List[Dict]:
-        """
-        Get holdings history for a specific agent.
-        
-        Args:
-            agent_name (str): Name of the agent
-            timeframe (str): Timeframe to filter (all, day, week, month)
-            
-        Returns:
-            List[Dict]: List of holdings snapshots
-        """
-        if agent_name not in self.holdings_history:
-            return []
-            
-        history = self.holdings_history[agent_name]
-        
-        # Filter by timeframe if needed
-        if timeframe == 'day':
-            cutoff = datetime.now() - timedelta(days=1)
-            history = [h for h in history if h['timestamp'] >= cutoff]
-        elif timeframe == 'week':
-            cutoff = datetime.now() - timedelta(days=7)
-            history = [h for h in history if h['timestamp'] >= cutoff]
-        elif timeframe == 'month':
-            cutoff = datetime.now() - timedelta(days=30)
-            history = [h for h in history if h['timestamp'] >= cutoff]
-            
-        return history
-
-def create_dashboard(trading_system):
-    """Create the trading dashboard."""
+def create_futures_dashboard(trading_system):
+    """Create the futures trading dashboard."""
     app = dash.Dash(
         __name__,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
         suppress_callback_exceptions=True,
-        assets_folder='assets'  # Point to assets folder for static files
+        assets_folder='assets',
+        url_base_pathname='/futures/'
     )
     
-    # Initialize signals history if not present
-    if not hasattr(trading_system, 'signals_history'):
-        trading_system.signals_history = []
-    
-    # Initialize wallets if needed
-    for agent in trading_system.agents:
-        if not hasattr(agent, 'wallet'):
-            agent.wallet = Wallet(initial_balance_usdt=20.0)
-        if not hasattr(agent.wallet, 'holdings'):
-            agent.wallet.holdings = {}
-    
     app.layout = html.Div([
-        # Header with new style
+        # Header with futures trading indicator
         html.Div([
             html.Div([
                 html.H1([
-                    "AI Crypto Trading Arena ",
-                    html.Span("LIVE", className='live-badge')
+                    "AI Crypto Futures Arena ",
+                    html.Span("LIVE", className='live-badge'),
+                    html.Span(f"{trading_system.leverage}x", className='leverage-badge')
                 ], className='dashboard-title'),
                 html.P([
-                    "AI Traders Battle: $20 → $100 Challenge ",
+                    "AI Traders Battle: $20 → $100 Challenge (Futures) ",
                     html.Span("🤖", className='emoji'),
-                    html.Span("💰", className='emoji')
+                    html.Span("💰", className='emoji'),
+                    html.Span("⚡", className='emoji')
                 ], className='dashboard-subtitle')
             ], className='header-content'),
             html.Div([
@@ -672,7 +547,7 @@ def create_dashboard(trading_system):
             n_intervals=0
         ),
 
-        # Main content area with reorganized layout
+        # Main content area
         html.Div([
             # Market Overview Tab
             html.Div([
@@ -797,7 +672,7 @@ def create_dashboard(trading_system):
          Input('nav-traders-comparison', 'n_clicks')]
     )
     def toggle_tabs(market_clicks, traders_clicks):
-        ctx = callback_context
+        ctx = dash.callback_context
         if not ctx.triggered:
             return {'display': 'block'}, {'display': 'none'}
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
@@ -857,7 +732,7 @@ def create_dashboard(trading_system):
                 
                 # Update layout
                 fig.update_layout(
-                    title=symbol,
+                    title=f"{symbol} (Futures {trading_system.leverage}x)",
                     template='plotly_dark',
                     height=400,
                     showlegend=True,
@@ -887,7 +762,8 @@ def create_dashboard(trading_system):
                         html.Th("Symbol"),
                         html.Th("Price"),
                         html.Th("24h Change"),
-                        html.Th("Volume")
+                        html.Th("Volume"),
+                        html.Th(f"Liq. Price ({trading_system.leverage}x)")
                     ])),
                     html.Tbody([
                         html.Tr([
@@ -897,7 +773,11 @@ def create_dashboard(trading_system):
                                 f"{data['change_24h']:+.2f}%",
                                 className=f"{'positive' if data['change_24h'] > 0 else 'negative'}"
                             ),
-                            html.Td(f"${data['volume']:,.0f}")
+                            html.Td(f"${data['volume']:,.0f}"),
+                            html.Td(
+                                f"${data['price'] * (1 - 1/trading_system.leverage):,.2f}",
+                                className='liquidation-price'
+                            )
                         ]) for data in market_data
                     ])
                 ], className='market-overview-table')
@@ -923,7 +803,8 @@ def create_dashboard(trading_system):
                         html.Th("Symbol"),
                         html.Th("Action"),
                         html.Th("Confidence"),
-                        html.Th("Status")
+                        html.Th("Status"),
+                        html.Th("Leverage")
                     ])),
                     html.Tbody([
                         html.Tr([
@@ -950,7 +831,8 @@ def create_dashboard(trading_system):
                                         "Executed" if signal.get('trade_executed', False) else "Pending"
                                     )
                                 ], className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending'}")
-                            )
+                            ),
+                            html.Td(f"{trading_system.leverage}x")
                         ], className='signal-row') for signal in reversed(recent_signals)
                     ])
                 ], className='signals-table-content')
@@ -991,19 +873,21 @@ def create_dashboard(trading_system):
                     # Get wallet metrics
                     metrics = agent.wallet.get_performance_metrics(current_prices)
                     
-                    # Get holdings that have non-zero amounts
-                    holdings_display = []
-                    for symbol, holding_data in metrics['holdings_with_prices'].items():
-                        if holding_data['amount'] > 1e-8:  # Only display non-dust amounts
-                            holdings_display.append({
+                    # Get positions that have non-zero amounts
+                    positions_display = []
+                    for symbol, position_data in metrics['positions'].items():
+                        if position_data['size'] > 1e-8:  # Only display non-dust amounts
+                            positions_display.append({
                                 'symbol': symbol.split('/')[0] if '/' in symbol else symbol,
-                                'amount': holding_data['amount'],
-                                'price': holding_data['price'],
-                                'value_usdt': holding_data['value_usdt']
+                                'size': position_data['size'],
+                                'entry_price': position_data['entry_price'],
+                                'current_price': position_data['current_price'],
+                                'pnl': position_data['unrealized_pnl'],
+                                'liquidation_price': position_data['liquidation_price']
                             })
                     
-                    # Sort holdings by value
-                    holdings_display.sort(key=lambda x: x['value_usdt'], reverse=True)
+                    # Sort positions by PNL
+                    positions_display.sort(key=lambda x: abs(x['pnl']), reverse=True)
                     
                     # Get trade history and format it properly
                     trades_history = []
@@ -1012,9 +896,10 @@ def create_dashboard(trading_system):
                             trades_history.append({
                                 'symbol': trade['symbol'],
                                 'is_buy': trade.get('action', '').upper() == 'BUY',
-                                'amount': trade.get('amount_crypto', 0),
+                                'size': trade.get('size', 0),
                                 'price': trade.get('price', 0),
-                                'value': trade.get('amount_usdt', 0)
+                                'value': trade.get('value', 0),
+                                'leverage': trade.get('leverage', trading_system.leverage)
                             })
                     
                     # Calculate goal progress
@@ -1025,9 +910,9 @@ def create_dashboard(trading_system):
                         'name': agent.name,
                         'personality': agent.get_personality_traits()['personality'],
                         'total_value': metrics['total_value_usdt'],
-                        'usdt_balance': metrics['balance_usdt'],
-                        'crypto_value': metrics['total_value_usdt'] - metrics['balance_usdt'],
-                        'holdings': holdings_display,
+                        'margin_used': metrics['margin_used'],
+                        'available_margin': metrics['available_margin'],
+                        'positions': positions_display,
                         'trades': trades_history,
                         'goal_progress': goal_progress,
                         'goal_status': goal_status
@@ -1051,28 +936,39 @@ def create_dashboard(trading_system):
                         html.Div([
                             html.Div(f"${data['total_value']:.2f}", className='total-value'),
                             html.Div([
-                                html.Span("USDT: ", className='balance-label'),
-                                html.Span(f"${data['usdt_balance']:.2f}", className='balance-value')
+                                html.Span("Margin Used: ", className='balance-label'),
+                                html.Span(f"${data['margin_used']:.2f}", className='balance-value')
                             ], className='balance-row'),
                             html.Div([
-                                html.Span("Crypto: ", className='balance-label'),
-                                html.Span(f"${data['crypto_value']:.2f}", className='balance-value')
+                                html.Span("Available: ", className='balance-label'),
+                                html.Span(f"${data['available_margin']:.2f}", className='balance-value')
                             ], className='balance-row')
                         ], className='balance-container'),
                         html.Div([
-                            html.H4("Holdings", className='holdings-title'),
+                            html.H4("Open Positions", className='positions-title'),
                             html.Div([
                                 html.Div([
-                                    html.Span(f"{h['symbol']}: ", className='holding-symbol'),
-                                    html.Span(
-                                        f"{h['amount']:.8f} @ ${h['price']:.2f}",
-                                        className='holding-amount'
-                                    ),
-                                    html.Span(f"(${h['value_usdt']:.2f})", className='holding-value')
-                                ], className='holding-row')
-                                for h in data['holdings']
-                            ], className='holdings-list') if data['holdings'] else html.Div("No crypto holdings", className='no-holdings')
-                        ], className='holdings-container'),
+                                    html.Div([
+                                        html.Span(f"{p['symbol']}: ", className='position-symbol'),
+                                        html.Span(
+                                            f"{p['size']:.8f} @ ${p['entry_price']:.2f}",
+                                            className='position-size'
+                                        )
+                                    ], className='position-header'),
+                                    html.Div([
+                                        html.Span(
+                                            f"PNL: ${p['pnl']:.2f}",
+                                            className=f"{'positive' if p['pnl'] > 0 else 'negative'}"
+                                        ),
+                                        html.Span(
+                                            f"Liq: ${p['liquidation_price']:.2f}",
+                                            className='liquidation-price'
+                                        )
+                                    ], className='position-metrics')
+                                ], className='position-row')
+                                for p in data['positions']
+                            ], className='positions-list') if data['positions'] else html.Div("No open positions", className='no-positions')
+                        ], className='positions-container'),
                         # Add Trade History Section
                         html.Div([
                             html.H4("Recent Trades", className='trades-title'),
@@ -1080,14 +976,15 @@ def create_dashboard(trading_system):
                                 html.Div([
                                     html.Div([
                                         html.Span(
-                                            "BUY" if trade['is_buy'] else "SELL",
-                                            className=f"trade-type {'buy' if trade['is_buy'] else 'sell'}"
+                                            "LONG" if trade['is_buy'] else "SHORT",
+                                            className=f"trade-type {'long' if trade['is_buy'] else 'short'}"
                                         ),
-                                        html.Span(trade['symbol'], className='trade-symbol')
+                                        html.Span(trade['symbol'], className='trade-symbol'),
+                                        html.Span(f"{trade['leverage']}x", className='trade-leverage')
                                     ], className='trade-header'),
                                     html.Div([
                                         html.Span(
-                                            f"{trade['amount']:.8f} @ ${trade['price']:.2f}",
+                                            f"{trade['size']:.8f} @ ${trade['price']:.2f}",
                                             className='trade-details'
                                         ),
                                         html.Span(
@@ -1230,6 +1127,10 @@ def create_dashboard(trading_system):
                 html.Div([
                     html.Span("Losers", className='stat-label'),
                     html.Span(f"{losers}", className='stat-value negative')
+                ], className='stat-item'),
+                html.Div([
+                    html.Span("Leverage", className='stat-label'),
+                    html.Span(f"{trading_system.leverage}x", className='stat-value leverage')
                 ], className='stat-item')
             ])
             
@@ -1244,7 +1145,7 @@ def create_dashboard(trading_system):
     )
     def reset_all_traders(n_clicks):
         if n_clicks is None:
-            raise PreventUpdate
+            raise dash.exceptions.PreventUpdate
             
         try:
             # Reset all traders
@@ -1256,17 +1157,4 @@ def create_dashboard(trading_system):
             print(f"Error resetting traders: {str(e)}")
             return "Error resetting traders"
     
-    return app
-
-if __name__ == '__main__':
-    # Create trading system instance
-    trading_system = TradingSystem()
-    
-    # Start the trading system in a background thread
-    trading_thread = Thread(target=trading_system.run)
-    trading_thread.daemon = True
-    trading_thread.start()
-    
-    # Create and run the dashboard
-    app = create_dashboard(trading_system)
-    app.run_server(debug=True) 
+    return app 
