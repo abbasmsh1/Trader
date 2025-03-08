@@ -14,8 +14,8 @@
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
-    background-color: #121212;
-    color: var(--text-primary);
+    background-color: #1f2630;
+    color: #ffffff;
     line-height: 1.6;
 }
 
@@ -37,35 +37,34 @@ body {
 
 .dashboard-title {
     margin: 0;
-    color: var(--text-primary);
+    color: #ffffff;
     font-size: 2.8em;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .dashboard-subtitle {
-    color: var(--text-secondary);
-    margin: 10px 0 0 0;
+    color: rgba(255, 255, 255, 0.8);
     font-size: 1.2em;
+    margin-top: 10px;
 }
 
 /* Navigation styles */
 .nav-container {
     display: flex;
     justify-content: center;
-    gap: 15px;
     margin-bottom: 30px;
+    gap: 15px;
 }
 
 .nav-button {
     background-color: #252525;
-    color: var(--text-primary);
+    color: #ffffff;
     border: none;
     padding: 12px 25px;
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.3s ease;
     font-size: 1.1em;
-    font-weight: 500;
 }
 
 .nav-button:hover {
@@ -75,38 +74,10 @@ body {
 
 .nav-button.active {
     background-color: #333333;
-    color: var(--primary-color);
+    color: #2196F3;
 }
 
-/* Memory status styles */
-.memory-status {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: linear-gradient(135deg, var(--primary-color), #0D47A1);
-    color: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    font-size: 0.9em;
-    z-index: 1000;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: all 0.3s ease;
-}
-
-.memory-status.saved {
-    background: linear-gradient(135deg, var(--success-color), #2E7D32);
-    animation: fadeOut 3s forwards;
-    animation-delay: 2s;
-}
-
-@keyframes fadeOut {
-    from { opacity: 1; transform: translateY(0); }
-    to { opacity: 0; transform: translateY(20px); visibility: hidden; }
-}
-
+/* Performance cards grid */
 .performance-cards-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -115,10 +86,10 @@ body {
 }
 
 .performance-card {
-    background: var(--card-bg);
-    border-radius: 8px;
+    background-color: #252525;
+    border-radius: 12px;
     padding: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .card-content {
@@ -127,45 +98,50 @@ body {
     gap: 15px;
 }
 
-.total-value {
-    font-size: 1.8em;
+/* Agent info */
+.agent-name {
+    font-size: 1.2em;
     font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 10px;
+    margin-right: 10px;
 }
 
+.agent-badge {
+    font-size: 0.8em;
+    padding: 2px 8px;
+    border-radius: 12px;
+    background: #2196F3;
+    color: white;
+}
+
+/* Balance container */
 .balance-container {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px;
-    background: rgba(0,0,0,0.1);
-    border-radius: 4px;
+    margin: 15px 0;
+    padding: 15px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
 }
 
 .balance-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    margin-bottom: 10px;
 }
 
-.balance-label {
-    color: var(--text-secondary);
+.total-value {
+    font-size: 1.8em;
+    font-weight: bold;
+    color: #4CAF50;
 }
 
-.balance-value {
-    font-family: monospace;
-    color: var(--text-primary);
-}
-
+/* Holdings */
 .holdings-container {
-    margin-top: 10px;
+    margin-top: 15px;
 }
 
 .holdings-title {
-    font-size: 1em;
-    color: var(--text-secondary);
-    margin-bottom: 8px;
+    font-size: 1.1em;
+    margin-bottom: 10px;
+    color: #B0B0B0;
 }
 
 .holdings-list {
@@ -176,50 +152,54 @@ body {
 
 .holding-row {
     display: flex;
-    align-items: center;
+    justify-content: space-between;
     padding: 8px;
-    background: rgba(255,255,255,0.05);
+    background-color: rgba(0, 0, 0, 0.2);
     border-radius: 4px;
 }
 
-.holding-symbol {
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-right: 8px;
-}
-
-.holding-amount {
-    font-family: monospace;
-    color: var(--text-secondary);
-    margin-right: 8px;
-}
-
-.holding-value {
-    color: var(--success-color);
-    margin-left: auto;
-}
-
+/* Goal progress */
 .goal-container {
-    margin-top: 10px;
+    margin-top: 15px;
 }
 
 .goal-progress-bar {
-    width: 100%;
-    height: 6px;
-    background: rgba(255,255,255,0.1);
-    border-radius: 3px;
+    height: 8px;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
     overflow: hidden;
+    margin-bottom: 8px;
 }
 
 .goal-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--primary-color), var(--success-color));
-    transition: width 0.3s ease;
+    background: linear-gradient(90deg, #2196F3, #4CAF50);
+    border-radius: 4px;
+    transition: width 0.5s ease;
 }
 
 .goal-status {
+    text-align: center;
     font-size: 0.9em;
-    color: var(--text-secondary);
-    margin-top: 4px;
-    text-align: right;
+    color: #B0B0B0;
+}
+
+/* Memory status */
+.memory-status {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #2196F3;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.memory-status.saved {
+    background: #4CAF50;
 } 
