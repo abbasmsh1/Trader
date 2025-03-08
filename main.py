@@ -340,6 +340,14 @@ def create_dashboard(trading_system: TradingSystem):
         return create_trading_view()
     
     @app.callback(
+        Output('agent-selector', 'options'),
+        [Input('interval-component', 'n_intervals')]
+    )
+    def update_agent_selector(n):
+        """Update the agent selector dropdown options."""
+        return [{'label': agent.name, 'value': i} for i, agent in enumerate(trading_system.agents)]
+
+    @app.callback(
         [Output('wallet-overview-cards', 'children'),
          Output('portfolio-performance', 'children'),
          Output('trade-history-table', 'children')],
@@ -348,315 +356,387 @@ def create_dashboard(trading_system: TradingSystem):
     )
     def update_wallet_view(n, selected_agent_idx):
         """Update the wallet view components."""
-        # Get current prices for all symbols
-        current_prices = {}
-        for symbol in trading_system.symbols:
-            df = trading_system.data_fetcher.get_historical_data(symbol)
-            if not df.empty:
-                current_prices[symbol] = float(df['close'].iloc[-1])
-        
-        # Create wallet overview cards
+        # Initialize empty containers for the components
         wallet_cards = []
-        for agent in trading_system.agents:
-            metrics = agent.get_wallet_metrics(current_prices)
-            wallet_cards.append(
-                html.Div([
-                    html.H3(agent.name, className='wallet-card-title'),
+        performance_charts = []
+        trade_history = html.Div("No trade history available")
+
+        try:
+            # Get current prices for all symbols
+            current_prices = {}
+            for symbol in trading_system.symbols:
+                df = trading_system.data_fetcher.get_historical_data(symbol)
+                if not df.empty:
+                    current_prices[symbol] = float(df['close'].iloc[-1])
+            
+            # Create wallet overview cards
+            for idx, agent in enumerate(trading_system.agents):
+                metrics = agent.get_wallet_metrics(current_prices)
+                wallet_cards.append(
                     html.Div([
+                        html.H3(agent.name, className='wallet-card-title'),
                         html.Div([
-                            html.Span("Total Value:", className='metric-label'),
-                            html.Span(f"${metrics['total_value_usdt']:.2f}", className='metric-value')
-                        ], className='metric-row'),
-                        html.Div([
-                            html.Span("USDT Balance:", className='metric-label'),
-                            html.Span(f"${metrics['balance_usdt']:.2f}", className='metric-value')
-                        ], className='metric-row'),
-                        html.Div([
-                            html.Span("Total Return:", className='metric-label'),
-                            html.Span(
-                                f"{metrics['total_return_pct']:+.2f}%",
-                                className=f"metric-value {'positive' if metrics['total_return_pct'] > 0 else 'negative'}"
-                            )
-                        ], className='metric-row'),
-                        html.Div([
-                            html.Span("Holdings:", className='metric-label'),
                             html.Div([
-                                html.Div(
-                                    f"{amount:.4f} {sym} (${amount * current_prices.get(sym, 0):.2f})"
-                                ) for sym, amount in metrics['holdings'].items()
-                            ], className='holdings-list')
-                        ], className='metric-row')
-                    ], className='wallet-card-content')
-                ], className='wallet-card')
-            )
+                                html.Span("Total Value:", className='metric-label'),
+                                html.Span(f"${metrics['total_value_usdt']:.2f}", className='metric-value')
+                            ], className='metric-row'),
+                            html.Div([
+                                html.Span("USDT Balance:", className='metric-label'),
+                                html.Span(f"${metrics['usdt_balance']:.2f}", className='metric-value')
+                            ], className='metric-row'),
+                            html.Div([
+                                html.Span("Holdings Value:", className='metric-label'),
+                                html.Span(f"${metrics['holdings_value_usdt']:.2f}", className='metric-value')
+                            ], className='metric-row')
+                        ], className='wallet-card-content')
+                    ], className=f'wallet-card {"selected" if idx == selected_agent_idx else ""}')
+                )
+            
+            # If an agent is selected, create performance charts and trade history
+            if selected_agent_idx is not None:
+                selected_agent = trading_system.agents[selected_agent_idx]
+                
+                # Create portfolio value chart
+                portfolio_value_fig = go.Figure()
+                portfolio_value_fig.add_trace(go.Scatter(
+                    x=[trade['timestamp'] for trade in selected_agent.trade_history],
+                    y=[trade['portfolio_value'] for trade in selected_agent.trade_history],
+                    mode='lines',
+                    name='Portfolio Value'
+                ))
+                portfolio_value_fig.update_layout(
+                    title='Portfolio Value Over Time',
+                    template='plotly_dark',
+                    height=400
+                )
+                
+                # Create holdings distribution chart
+                holdings = selected_agent.get_holdings()
+                holdings_fig = go.Figure(data=[go.Pie(
+                    labels=list(holdings.keys()),
+                    values=list(holdings.values()),
+                    hole=.3
+                )])
+                holdings_fig.update_layout(
+                    title='Holdings Distribution',
+                    template='plotly_dark',
+                    height=400
+                )
+                
+                performance_charts = [
+                    dcc.Graph(figure=portfolio_value_fig),
+                    dcc.Graph(figure=holdings_fig)
+                ]
+                
+                # Create trade history table
+                trade_history = html.Table([
+                    html.Thead(html.Tr([
+                        html.Th("Time"),
+                        html.Th("Symbol"),
+                        html.Th("Action"),
+                        html.Th("Amount"),
+                        html.Th("Price")
+                    ])),
+                    html.Tbody([
+                        html.Tr([
+                            html.Td(datetime.fromtimestamp(trade['timestamp']).strftime('%Y-%m-%d %H:%M')),
+                            html.Td(trade['symbol']),
+                            html.Td(trade['action']),
+                            html.Td(f"{trade['amount']:.4f}"),
+                            html.Td(f"${trade['price']:.2f}")
+                        ]) for trade in reversed(selected_agent.trade_history[-10:])  # Show last 10 trades
+                    ])
+                ], className='trade-history-table')
         
-        # Create performance charts for selected agent
-        selected_agent = trading_system.agents[selected_agent_idx]
-        performance_charts = [
-            # Portfolio Value Chart
-            dcc.Graph(
-                figure=create_portfolio_value_chart(selected_agent, current_prices),
-                className='performance-chart'
-            ),
-            # Holdings Distribution Chart
-            dcc.Graph(
-                figure=create_holdings_distribution_chart(selected_agent, current_prices),
-                className='performance-chart'
-            )
-        ]
-        
-        # Create trade history table
-        trade_history = create_trade_history_table(selected_agent)
+        except Exception as e:
+            print(f"Error updating wallet view: {str(e)}")
+            return [], [], html.Div(f"Error: {str(e)}")
         
         return wallet_cards, performance_charts, trade_history
     
-    def create_portfolio_value_chart(agent, current_prices):
-        """Create a line chart showing portfolio value over time."""
-        # Get trade history
-        trades_df = agent.wallet.get_trade_history_df()
-        if trades_df.empty:
-            return go.Figure()
-        
-        # Calculate cumulative portfolio value
-        trades_df['cumulative_value'] = trades_df.apply(
-            lambda row: agent.wallet.get_total_value_usdt(current_prices),
-            axis=1
-        )
-        
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=trades_df['timestamp'],
-            y=trades_df['cumulative_value'],
-            mode='lines+markers',
-            name='Portfolio Value'
-        ))
-        
-        fig.update_layout(
-            title=f'{agent.name} - Portfolio Value Over Time',
-            xaxis_title='Time',
-            yaxis_title='Value (USDT)',
-            template='plotly_dark',
-            height=400
-        )
-        
-        return fig
-    
-    def create_holdings_distribution_chart(agent, current_prices):
-        """Create a pie chart showing current holdings distribution."""
-        metrics = agent.get_wallet_metrics(current_prices)
-        holdings_value = []
-        labels = []
-        
-        # Add USDT balance
-        if metrics['balance_usdt'] > 0:
-            holdings_value.append(metrics['balance_usdt'])
-            labels.append('USDT')
-        
-        # Add crypto holdings
-        for symbol, amount in metrics['holdings'].items():
-            if symbol in current_prices:
-                value = amount * current_prices[symbol]
-                holdings_value.append(value)
-                labels.append(symbol.replace('/USDT', ''))
-        
-        fig = go.Figure(data=[go.Pie(
-            labels=labels,
-            values=holdings_value,
-            hole=.3
-        )])
-        
-        fig.update_layout(
-            title=f'{agent.name} - Holdings Distribution',
-            template='plotly_dark',
-            height=400
-        )
-        
-        return fig
-    
-    def create_trade_history_table(agent):
-        """Create a table showing trade history."""
-        trades_df = agent.wallet.get_trade_history_df()
-        if trades_df.empty:
-            return html.Div("No trades yet", className='no-trades-message')
-        
-        return html.Table([
-            html.Thead(html.Tr([
-                html.Th("Time"),
-                html.Th("Symbol"),
-                html.Th("Action"),
-                html.Th("Amount"),
-                html.Th("Price"),
-                html.Th("Total")
-            ])),
-            html.Tbody([
-                html.Tr([
-                    html.Td(trade['timestamp'].strftime('%Y-%m-%d %H:%M:%S')),
-                    html.Td(trade['symbol'].replace('/USDT', '')),
-                    html.Td(
-                        html.Span(
-                            trade['action'],
-                            className=f"trade-action-{trade['action'].lower()}"
-                        )
-                    ),
-                    html.Td(f"{trade['amount_crypto']:.4f}"),
-                    html.Td(f"${trade['price']:.2f}"),
-                    html.Td(f"${trade['amount_usdt']:.2f}")
-                ]) for _, trade in trades_df.iterrows()
-            ])
-        ], className='trade-history-table')
-    
-    # Add new CSS styles for the wallet view
-    app.index_string = app.index_string.replace(
-        '</style>',
-        '''
-        /* Wallet view styles */
-        .wallet-view {
-            padding: 20px;
-        }
-        
-        .section-title {
-            color: #ffffff;
-            margin-bottom: 20px;
-        }
-        
-        .wallet-overview-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .wallet-card {
-            background-color: #2b3c4e;
-            border-radius: 10px;
-            padding: 20px;
-            transition: transform 0.2s;
-        }
-        
-        .wallet-card:hover {
-            transform: translateY(-5px);
-        }
-        
-        .wallet-card-title {
-            color: #ffffff;
-            margin-top: 0;
-            margin-bottom: 15px;
-            font-size: 1.2em;
-        }
-        
-        .wallet-card-content {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        
-        .metric-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .metric-label {
-            color: #a8b2c1;
-        }
-        
-        .metric-value {
-            font-weight: bold;
-        }
-        
-        .metric-value.positive {
-            color: #00ff9f;
-        }
-        
-        .metric-value.negative {
-            color: #ff4757;
-        }
-        
-        .holdings-list {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-            margin-top: 5px;
-        }
-        
-        .portfolio-section {
-            margin-bottom: 30px;
-        }
-        
-        .agent-dropdown {
-            margin-bottom: 20px;
-        }
-        
-        .performance-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-            gap: 20px;
-        }
-        
-        .performance-chart {
-            background-color: #2b3c4e;
-            border-radius: 10px;
-            padding: 15px;
-        }
-        
-        .trade-history-table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: #2b3c4e;
-            border-radius: 10px;
-            overflow: hidden;
-        }
-        
-        .trade-history-table th,
-        .trade-history-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #3d4c5e;
-        }
-        
-        .trade-history-table th {
-            background-color: #283442;
-            color: #ffffff;
-            font-weight: 600;
-        }
-        
-        .trade-action-buy {
-            color: #00ff9f;
-            font-weight: bold;
-        }
-        
-        .trade-action-sell {
-            color: #ff4757;
-            font-weight: bold;
-        }
-        
-        .no-trades-message {
-            text-align: center;
-            padding: 20px;
-            color: #a8b2c1;
-        }
-        
-        /* Navigation tabs styles */
-        .nav-tabs {
-            margin-top: 20px;
-        }
-        
-        .nav-tabs .tab {
-            padding: 15px 20px;
-            color: #ffffff;
-            background-color: #2b3c4e;
-            border: none;
-            border-radius: 5px 5px 0 0;
-            margin-right: 5px;
-        }
-        
-        .nav-tabs .tab--selected {
-            background-color: #3d4c5e;
-            border-bottom: 3px solid #00ff9f;
-        }
-        </style>
-        '''
-    )
+    # Add CSS styles
+    app.index_string = '''
+    <!DOCTYPE html>
+    <html>
+        <head>
+            {%metas%}
+            <title>{%title%}</title>
+            {%favicon%}
+            {%css%}
+            <style>
+                /* Global Styles */
+                :root {
+                    --primary-color: #2196F3;
+                    --secondary-color: #f50057;
+                    --success-color: #4CAF50;
+                    --warning-color: #ff9800;
+                    --error-color: #f44336;
+                    --background-dark: #1a1a1a;
+                    --background-card: #2a2a2a;
+                    --background-hover: #303030;
+                    --text-primary: #ffffff;
+                    --text-secondary: #9e9e9e;
+                    --border-color: #404040;
+                }
+
+                body {
+                    background-color: var(--background-dark);
+                    color: var(--text-primary);
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                    margin: 0;
+                    padding: 0;
+                }
+
+                /* Dashboard Layout */
+                .container {
+                    max-width: 1800px;
+                    margin: 0 auto;
+                    padding: 1rem;
+                }
+
+                .header {
+                    margin-bottom: 2rem;
+                    padding: 1rem;
+                    background: var(--background-card);
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+
+                /* News Section Styles */
+                .news-section {
+                    margin: 2rem 0;
+                    padding: 1rem;
+                    background: var(--background-card);
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                }
+
+                .news-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 1rem;
+                    margin-top: 1rem;
+                }
+
+                .news-card {
+                    background: var(--background-hover);
+                    border-radius: 8px;
+                    padding: 1rem;
+                    transition: transform 0.2s ease, box-shadow 0.2s ease;
+                }
+
+                .news-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                }
+
+                .news-source {
+                    color: var(--primary-color);
+                    font-size: 0.9rem;
+                    margin-bottom: 0.5rem;
+                }
+
+                .news-title {
+                    font-size: 1.1rem;
+                    font-weight: 600;
+                    margin-bottom: 0.5rem;
+                    color: var(--text-primary);
+                }
+
+                .news-body {
+                    color: var(--text-secondary);
+                    font-size: 0.9rem;
+                    margin-bottom: 1rem;
+                    line-height: 1.4;
+                }
+
+                .news-metadata {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 0.8rem;
+                    color: var(--text-secondary);
+                }
+
+                .sentiment-badge {
+                    padding: 0.25rem 0.5rem;
+                    border-radius: 4px;
+                    font-weight: 500;
+                }
+
+                .sentiment-positive {
+                    background: rgba(76, 175, 80, 0.2);
+                    color: #81c784;
+                }
+
+                .sentiment-negative {
+                    background: rgba(244, 67, 54, 0.2);
+                    color: #e57373;
+                }
+
+                .sentiment-neutral {
+                    background: rgba(158, 158, 158, 0.2);
+                    color: #bdbdbd;
+                }
+
+                /* Wallet Section Styles */
+                .wallet-section {
+                    margin-bottom: 2rem;
+                }
+                
+                .wallet-overview-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 1rem;
+                    margin-top: 1rem;
+                }
+                
+                .wallet-card {
+                    background: var(--background-card);
+                    border-radius: 8px;
+                    padding: 1rem;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    transition: all 0.3s ease;
+                }
+                
+                .wallet-card:hover {
+                    transform: translateY(-2px);
+                    box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+                }
+                
+                .wallet-card.selected {
+                    border: 2px solid var(--primary-color);
+                    background: var(--background-hover);
+                }
+                
+                .wallet-card-title {
+                    color: var(--text-primary);
+                    margin: 0 0 1rem 0;
+                    font-size: 1.2rem;
+                }
+                
+                .metric-row {
+                    display: flex;
+                    justify-content: space-between;
+                    margin-bottom: 0.5rem;
+                }
+                
+                .metric-label {
+                    color: var(--text-secondary);
+                }
+                
+                .metric-value {
+                    color: var(--text-primary);
+                    font-weight: bold;
+                }
+                
+                .metric-value.positive {
+                    color: var(--success-color);
+                }
+                
+                .metric-value.negative {
+                    color: var(--error-color);
+                }
+
+                /* Chart Styles */
+                .chart-container {
+                    background: var(--background-card);
+                    border-radius: 8px;
+                    padding: 1rem;
+                    margin-bottom: 1rem;
+                }
+
+                /* Table Styles */
+                .trade-history-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 1rem;
+                    background: var(--background-card);
+                    border-radius: 8px;
+                    overflow: hidden;
+                }
+                
+                .trade-history-table th,
+                .trade-history-table td {
+                    padding: 0.75rem;
+                    text-align: left;
+                    border-bottom: 1px solid var(--border-color);
+                }
+                
+                .trade-history-table th {
+                    background: var(--background-hover);
+                    color: var(--text-primary);
+                    font-weight: bold;
+                }
+                
+                .trade-history-table tr:hover {
+                    background: var(--background-hover);
+                }
+
+                /* Control Elements */
+                .agent-dropdown {
+                    margin: 1rem 0;
+                    width: 100%;
+                    max-width: 300px;
+                }
+
+                .agent-dropdown .Select-control {
+                    background: var(--background-card);
+                    border-color: var(--border-color);
+                    color: var(--text-primary);
+                }
+
+                .agent-dropdown .Select-menu-outer {
+                    background: var(--background-card);
+                    border-color: var(--border-color);
+                }
+
+                .agent-dropdown .Select-option {
+                    background: var(--background-card);
+                    color: var(--text-primary);
+                }
+
+                .agent-dropdown .Select-option:hover {
+                    background: var(--background-hover);
+                }
+
+                /* Performance Container */
+                .performance-container {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+                    gap: 1rem;
+                    margin-top: 1rem;
+                }
+
+                /* Responsive Design */
+                @media (max-width: 768px) {
+                    .container {
+                        padding: 0.5rem;
+                    }
+
+                    .news-grid,
+                    .wallet-overview-grid,
+                    .performance-container {
+                        grid-template-columns: 1fr;
+                    }
+
+                    .news-card,
+                    .wallet-card {
+                        margin-bottom: 1rem;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            {%app_entry%}
+            <footer>
+                {%config%}
+                {%scripts%}
+                {%renderer%}
+            </footer>
+        </body>
+    </html>
+    '''
     
     return app
 
