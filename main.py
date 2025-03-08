@@ -42,6 +42,9 @@ class TradingSystem:
         if market_data.empty:
             return []
         
+        # Set the symbol name in the market data
+        market_data.name = symbol
+        
         signals = []
         for agent in self.agents:
             # Get analysis and signal from each agent

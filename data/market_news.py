@@ -28,8 +28,10 @@ class MarketNewsFetcher:
             List[Dict]: List of news articles with sentiment analysis
         """
         try:
-            # Remove /USDT if present
-            clean_symbol = symbol.replace('/USDT', '')
+            # Clean and validate symbol
+            clean_symbol = symbol.replace('/USDT', '').replace('USDT', '').upper()
+            if not clean_symbol or clean_symbol == 'UNKNOWN':
+                return []
             
             # Fetch news from CryptoCompare
             endpoint = f"{self.base_url}/news/"
@@ -44,12 +46,17 @@ class MarketNewsFetcher:
             response.raise_for_status()
             
             news_data = response.json()
-            if news_data['Response'] != 'Success':
+            if not isinstance(news_data, dict) or news_data.get('Response') != 'Success':
+                print(f"Invalid response for {symbol}: {news_data.get('Message', 'Unknown error')}")
                 return []
             
             # Process and analyze each news article
             processed_news = []
-            for article in news_data['Data']:
+            for article in news_data.get('Data', []):
+                # Ensure article has required fields
+                if not all(k in article for k in ['title', 'body', 'url', 'published_on', 'source']):
+                    continue
+                    
                 # Perform sentiment analysis
                 sentiment = self._analyze_sentiment(article['title'] + ' ' + article['body'])
                 
@@ -66,8 +73,11 @@ class MarketNewsFetcher:
             
             return processed_news
             
+        except requests.exceptions.RequestException as e:
+            print(f"Network error fetching news for {symbol}: {str(e)}")
+            return []
         except Exception as e:
-            print(f"Error fetching news for {symbol}: {str(e)}")
+            print(f"Error processing news for {symbol}: {str(e)}")
             return []
     
     def _analyze_sentiment(self, text: str) -> Dict:
