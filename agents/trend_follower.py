@@ -24,7 +24,7 @@ class TrendFollower(BaseAgent):
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
-        Analyze market data using trend-following indicators.
+        Analyze market data using trend-following indicators and news sentiment.
         
         Args:
             market_data (pd.DataFrame): Historical market data with OHLCV
@@ -69,18 +69,32 @@ class TrendFollower(BaseAgent):
             (macd_current < macd_signal and macd_prev >= macd_signal_prev)
         )
         
+        # Get news sentiment analysis
+        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
+        sentiment = self.analyze_news_sentiment(symbol)
+        
+        # Adjust trend strength based on news sentiment
+        if sentiment['article_count'] > 0:
+            # Strengthen or weaken trend based on sentiment alignment
+            if (trend_direction > 0 and sentiment['sentiment_score'] > 0) or \
+               (trend_direction < 0 and sentiment['sentiment_score'] < 0):
+                trend_strength *= (1 + abs(sentiment['sentiment_score']) * 0.2)
+            else:
+                trend_strength *= (1 - abs(sentiment['sentiment_score']) * 0.1)
+        
         return {
             'trend_direction': trend_direction,
             'trend_strength': float(trend_strength),
             'rsi': float(rsi),
             'macd_crossover': bool(macd_crossover),
             'price': float(latest['close']),
+            'sentiment': sentiment,
             'timestamp': latest.name
         }
     
     def generate_signal(self, analysis: Dict) -> Dict:
         """
-        Generate trading signals based on trend analysis.
+        Generate trading signals based on trend analysis and news sentiment.
         
         Args:
             analysis (Dict): Market analysis results
@@ -98,14 +112,18 @@ class TrendFollower(BaseAgent):
         # Calculate base confidence from trend strength
         base_confidence = min(float(analysis['trend_strength']) * 10, 1.0)
         
-        # Strong uptrend with confirmation
+        # Adjust confidence based on news sentiment
+        adjusted_confidence = self.adjust_confidence(base_confidence, analysis['sentiment'])
+        
+        # Strong uptrend with confirmation and positive news
         if (analysis['trend_direction'] > 0 and
             float(analysis['rsi']) < self.rsi_overbought - 10 and
             analysis['macd_crossover'] and
-            base_confidence > 0.8):
+            base_confidence > 0.8 and
+            analysis['sentiment']['sentiment_score'] > 0.2):
             
             signal['action'] = 'STRONG_BUY'
-            signal['confidence'] = base_confidence * 0.95
+            signal['confidence'] = adjusted_confidence * 0.95
             
         # Regular uptrend entry
         elif (analysis['trend_direction'] > 0 and
@@ -113,23 +131,24 @@ class TrendFollower(BaseAgent):
               analysis['macd_crossover']):
             
             signal['action'] = 'BUY'
-            signal['confidence'] = base_confidence * 0.85
+            signal['confidence'] = adjusted_confidence * 0.85
             
         # Building position in uptrend
         elif (analysis['trend_direction'] > 0 and
               float(analysis['rsi']) < self.rsi_overbought + 5):
             
             signal['action'] = 'SCALE_IN'
-            signal['confidence'] = base_confidence * 0.75
+            signal['confidence'] = adjusted_confidence * 0.75
             
-        # Strong downtrend with confirmation
+        # Strong downtrend with confirmation and negative news
         elif (analysis['trend_direction'] < 0 and
               float(analysis['rsi']) > self.rsi_oversold + 10 and
               analysis['macd_crossover'] and
-              base_confidence > 0.8):
+              base_confidence > 0.8 and
+              analysis['sentiment']['sentiment_score'] < -0.2):
             
             signal['action'] = 'STRONG_SELL'
-            signal['confidence'] = base_confidence * 0.9
+            signal['confidence'] = adjusted_confidence * 0.9
             
         # Regular downtrend exit
         elif (analysis['trend_direction'] < 0 and
@@ -137,40 +156,53 @@ class TrendFollower(BaseAgent):
               analysis['macd_crossover']):
             
             signal['action'] = 'SELL'
-            signal['confidence'] = base_confidence * 0.8
+            signal['confidence'] = adjusted_confidence * 0.8
             
         # Reducing position in downtrend
         elif (analysis['trend_direction'] < 0 and
               float(analysis['rsi']) > self.rsi_oversold - 5):
             
             signal['action'] = 'SCALE_OUT'
-            signal['confidence'] = base_confidence * 0.7
+            signal['confidence'] = adjusted_confidence * 0.7
             
         # Monitoring conditions
         elif abs(analysis['trend_direction']) < 0.5:
             signal['action'] = 'WATCH'
-            signal['confidence'] = base_confidence * 0.6
+            signal['confidence'] = adjusted_confidence * 0.6
         
-        # Add technical analysis commentary
+        # Add technical analysis commentary with news sentiment
         signal['commentary'] = self._generate_technical_commentary(analysis, signal['action'])
         
         return signal
     
     def _generate_technical_commentary(self, analysis: Dict, action: str) -> str:
-        """Generate technical analysis commentary based on the action."""
+        """Generate technical analysis commentary based on the action and news."""
+        base_comment = ""
         if action == 'STRONG_BUY':
-            return "Strong bullish trend confirmed! Multiple indicators showing buy signals! 📈⬆️"
+            base_comment = "Strong bullish trend confirmed! Multiple indicators showing buy signals! 📈⬆️"
         elif action == 'BUY':
-            return "Bullish trend developing with positive MACD crossover. 📈"
+            base_comment = "Bullish trend developing with positive MACD crossover. 📈"
         elif action == 'SCALE_IN':
-            return "Uptrend continues, adding to position on pullback. 📊"
+            base_comment = "Uptrend continues, adding to position on pullback. 📊"
         elif action == 'STRONG_SELL':
-            return "Strong bearish trend confirmed! Multiple indicators showing sell signals! 📉⬇️"
+            base_comment = "Strong bearish trend confirmed! Multiple indicators showing sell signals! 📉⬇️"
         elif action == 'SELL':
-            return "Bearish trend developing with negative MACD crossover. 📉"
+            base_comment = "Bearish trend developing with negative MACD crossover. 📉"
         elif action == 'SCALE_OUT':
-            return "Downtrend continues, reducing position on bounce. 📊"
+            base_comment = "Downtrend continues, reducing position on bounce. 📊"
         elif action == 'WATCH':
-            return "Consolidation phase - waiting for clear trend direction. 🔍"
+            base_comment = "Consolidation phase - waiting for clear trend direction. 🔍"
         else:
-            return "Neutral trend - maintaining current position. ⚖️" 
+            base_comment = "Neutral trend - maintaining current position. ⚖️"
+        
+        # Add technical metrics
+        tech_comment = (
+            f"RSI: {analysis['rsi']:.1f} | " +
+            f"Trend Strength: {analysis['trend_strength']:.2f} | " +
+            f"Direction: {'Bullish' if analysis['trend_direction'] > 0 else 'Bearish'}"
+        )
+        
+        # Add news sentiment commentary
+        news_comment = self.get_news_commentary(analysis['sentiment'])
+        
+        return f"{base_comment}\n{tech_comment}\n{news_comment}" 

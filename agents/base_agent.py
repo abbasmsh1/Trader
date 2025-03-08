@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from typing import Dict, List, Optional, Literal
 import pandas as pd
+from data.market_news import MarketNewsFetcher
 
 # Define trading actions as constants
 TradingAction = Literal[
@@ -34,6 +35,7 @@ class BaseAgent(ABC):
         self.trading_history: List[Dict] = []
         self.strategy_preferences: Dict[str, float] = {}
         self.market_beliefs: Dict[str, str] = {}
+        self.news_fetcher = MarketNewsFetcher()
         
         # Action thresholds for different signal types
         self.action_thresholds = {
@@ -195,4 +197,65 @@ class BaseAgent(ABC):
         }
     
     def __str__(self) -> str:
-        return f"{self.name} ({self.personality}) - Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe}" 
+        return f"{self.name} ({self.personality}) - Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe}"
+    
+    def analyze_news_sentiment(self, symbol: str) -> Dict:
+        """
+        Analyze market news sentiment.
+        
+        Args:
+            symbol (str): Cryptocurrency symbol
+            
+        Returns:
+            Dict: News sentiment analysis results
+        """
+        return self.news_fetcher.get_market_sentiment(symbol, self.timeframe)
+        
+    def adjust_confidence(self, base_confidence: float, sentiment: Dict) -> float:
+        """
+        Adjust signal confidence based on news sentiment.
+        
+        Args:
+            base_confidence (float): Base confidence from technical analysis
+            sentiment (Dict): News sentiment analysis results
+            
+        Returns:
+            float: Adjusted confidence score
+        """
+        if sentiment['article_count'] == 0:
+            return base_confidence
+            
+        # Calculate sentiment impact (0.0 to 0.3)
+        sentiment_impact = min(0.3, sentiment['confidence'] * abs(sentiment['sentiment_score']))
+        
+        # Adjust confidence based on sentiment alignment
+        if sentiment['sentiment_score'] > 0 and base_confidence > 0.5:
+            # Positive sentiment reinforces bullish signal
+            return min(1.0, base_confidence + sentiment_impact)
+        elif sentiment['sentiment_score'] < 0 and base_confidence < 0.5:
+            # Negative sentiment reinforces bearish signal
+            return max(0.0, base_confidence - sentiment_impact)
+        else:
+            # Sentiment contradicts signal, reduce confidence
+            return base_confidence * (1.0 - sentiment_impact)
+            
+    def get_news_commentary(self, sentiment: Dict) -> str:
+        """
+        Generate commentary about market news sentiment.
+        
+        Args:
+            sentiment (Dict): News sentiment analysis results
+            
+        Returns:
+            str: News-based market commentary
+        """
+        if sentiment['article_count'] == 0:
+            return "No recent news available."
+            
+        sentiment_str = sentiment['overall_sentiment'].capitalize()
+        confidence_str = "High" if sentiment['confidence'] > 0.7 else "Moderate" if sentiment['confidence'] > 0.4 else "Low"
+        
+        return f"Market news sentiment: {sentiment_str} ({confidence_str} confidence). " + \
+               f"Based on {sentiment['article_count']} recent articles " + \
+               f"({sentiment['positive_ratio']*100:.0f}% positive, " + \
+               f"{sentiment['negative_ratio']*100:.0f}% negative)." 

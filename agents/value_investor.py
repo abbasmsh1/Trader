@@ -41,7 +41,7 @@ class ValueInvestor(BaseAgent):
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
-        Analyze market data using value investing principles.
+        Analyze market data using value investing principles and news sentiment.
         Looks for stable trends, consistent volume, and potential undervaluation.
         """
         df = market_data.copy()
@@ -59,7 +59,6 @@ class ValueInvestor(BaseAgent):
         
         # Get latest data
         latest = df.iloc[-1]
-        prev = df.iloc[-2]
         
         # Ensure numeric values and handle NaN
         close_price = float(latest['close']) if pd.notnull(latest['close']) else 0.0
@@ -83,6 +82,10 @@ class ValueInvestor(BaseAgent):
         # Calculate market stability
         stability_score = 1 - (volatility / df['volatility'].max() if df['volatility'].max() > 0 else 0)
         
+        # Get news sentiment analysis
+        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
+        sentiment = self.analyze_news_sentiment(symbol)
+        
         return {
             'price': close_price,
             'ma_long': ma_long,
@@ -93,12 +96,13 @@ class ValueInvestor(BaseAgent):
             'stability_score': float(stability_score),
             'volatility': volatility,
             'price_to_volume': float(price_to_volume),
+            'sentiment': sentiment,
             'timestamp': latest.name
         }
     
     def generate_signal(self, analysis: Dict) -> Dict:
         """
-        Generate trading signals based on value investing principles.
+        Generate trading signals based on value investing principles and news sentiment.
         Focuses on stable, undervalued assets with strong fundamentals.
         """
         signal = {
@@ -112,16 +116,17 @@ class ValueInvestor(BaseAgent):
         base_confidence = min(float(analysis['stability_score']) * 0.7 + 
                             (1 - float(analysis['volatility'])) * 0.3, 1.0)
         
-        # Determine trend direction
-        trend_direction = 1 if float(analysis['trend_strength']) > 0 else -1 if float(analysis['trend_strength']) < 0 else 0
+        # Adjust confidence based on news sentiment
+        adjusted_confidence = self.adjust_confidence(base_confidence, analysis['sentiment'])
         
         # Strong value opportunity conditions
         if (analysis['is_undervalued'] and
             float(analysis['volume_ratio']) > self.volume_threshold * 1.5 and
-            float(analysis['stability_score']) > 0.8):
+            float(analysis['stability_score']) > 0.8 and
+            analysis['sentiment']['sentiment_score'] > 0.2):
             
             signal['action'] = 'STRONG_BUY'
-            signal['confidence'] = base_confidence * 0.95
+            signal['confidence'] = adjusted_confidence * 0.95
             
         # Good value entry point
         elif (analysis['is_undervalued'] and
@@ -129,63 +134,70 @@ class ValueInvestor(BaseAgent):
               float(analysis['stability_score']) > 0.7):
             
             signal['action'] = 'BUY'
-            signal['confidence'] = base_confidence * 0.85
+            signal['confidence'] = adjusted_confidence * 0.85
             
         # Gradual position building
         elif (analysis['is_undervalued'] and
               float(analysis['stability_score']) > 0.6):
             
             signal['action'] = 'SCALE_IN'
-            signal['confidence'] = base_confidence * 0.75
+            signal['confidence'] = adjusted_confidence * 0.75
             
         # Strong sell conditions
         elif (float(analysis['price']) > float(analysis['ma_long']) * 1.8 or
-              float(analysis['volatility']) > 0.15):
+              float(analysis['volatility']) > 0.15 or
+              analysis['sentiment']['sentiment_score'] < -0.3):
             
             signal['action'] = 'STRONG_SELL'
-            signal['confidence'] = base_confidence * 0.9
+            signal['confidence'] = adjusted_confidence * 0.9
             
         # Regular sell conditions
         elif (float(analysis['price']) > float(analysis['ma_long']) * 1.5 or
               float(analysis['volatility']) > 0.12):
             
             signal['action'] = 'SELL'
-            signal['confidence'] = base_confidence * 0.8
+            signal['confidence'] = adjusted_confidence * 0.8
             
         # Gradual position reduction
         elif (float(analysis['price']) > float(analysis['ma_long']) * 1.3 or
               float(analysis['volatility']) > 0.1):
             
             signal['action'] = 'SCALE_OUT'
-            signal['confidence'] = base_confidence * 0.7
+            signal['confidence'] = adjusted_confidence * 0.7
             
         # Watch conditions
         elif (float(analysis['stability_score']) < 0.5 or
               abs(float(analysis['trend_strength'])) > 0.1):
             
             signal['action'] = 'WATCH'
-            signal['confidence'] = base_confidence * 0.6
+            signal['confidence'] = adjusted_confidence * 0.6
         
-        # Add Warren Buffett-style commentary
+        # Add Warren Buffett-style commentary with news sentiment
         signal['commentary'] = self._generate_buffett_commentary(analysis, signal['action'])
         
         return signal
     
     def _generate_buffett_commentary(self, analysis: Dict, action: str) -> str:
-        """Generate Warren Buffett-style market commentary based on the action."""
+        """Generate Warren Buffett-style market commentary based on the action and news."""
+        base_comment = ""
         if action == 'STRONG_BUY':
-            return "Be fearful when others are greedy, and greedy when others are fearful. This is a prime opportunity! 💎"
+            base_comment = "Be fearful when others are greedy, and greedy when others are fearful. This is a prime opportunity! 💎"
         elif action == 'BUY':
-            return "Price is what you pay, value is what you get. The market is offering a fair deal. 📈"
+            base_comment = "Price is what you pay, value is what you get. The market is offering a fair deal. 📈"
         elif action == 'SCALE_IN':
-            return "Our favorite holding period is forever. Time to start building a position. 🏗️"
+            base_comment = "Our favorite holding period is forever. Time to start building a position. 🏗️"
         elif action == 'STRONG_SELL':
-            return "When we own portions of outstanding businesses with outstanding managements, our favorite holding period is forever. But not this time. ⚠️"
+            base_comment = "When we own portions of outstanding businesses with outstanding managements, our favorite holding period is forever. But not this time. ⚠️"
         elif action == 'SELL':
-            return "The most important thing to do if you find yourself in a hole is to stop digging. 🛑"
+            base_comment = "The most important thing to do if you find yourself in a hole is to stop digging. 🛑"
         elif action == 'SCALE_OUT':
-            return "Should you find yourself in a chronically leaking boat, energy devoted to changing vessels is likely to be more productive than energy devoted to patching leaks. 🚣"
+            base_comment = "Should you find yourself in a chronically leaking boat, energy devoted to changing vessels is likely to be more productive than energy devoted to patching leaks. 🚣"
         elif action == 'WATCH':
-            return "Risk comes from not knowing what you're doing. Let's wait and observe. 👀"
+            base_comment = "Risk comes from not knowing what you're doing. Let's wait and observe. 👀"
         else:
-            return "The stock market is designed to transfer money from the active to the patient. HODL! 💪" 
+            base_comment = "The stock market is designed to transfer money from the active to the patient. HODL! 💪"
+        
+        # Add news sentiment commentary
+        news_comment = self.get_news_commentary(analysis['sentiment'])
+        
+        return f"{base_comment}\n{news_comment}" 

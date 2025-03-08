@@ -42,7 +42,7 @@ class TechDisruptor(BaseAgent):
         
     def analyze_market(self, market_data: pd.DataFrame) -> Dict:
         """
-        Analyze market data using tech-focused momentum strategy.
+        Analyze market data using tech-focused momentum strategy and news sentiment.
         Looks for high momentum, volume surges, and breakout patterns.
         """
         df = market_data.copy()
@@ -61,7 +61,6 @@ class TechDisruptor(BaseAgent):
         
         # Get latest data
         latest = df.iloc[-1]
-        prev = df.iloc[-2]
         
         # Ensure numeric values and handle NaN
         rsi = float(latest['RSI']) if pd.notnull(latest['RSI']) else 50.0
@@ -90,6 +89,14 @@ class TechDisruptor(BaseAgent):
             (min(abs(price_momentum) * 10, 1)) * 0.4
         )
         
+        # Get news sentiment analysis
+        symbol = market_data.name if hasattr(market_data, 'name') else 'UNKNOWN'
+        sentiment = self.analyze_news_sentiment(symbol)
+        
+        # Adjust innovation score based on news sentiment
+        if sentiment['article_count'] > 0:
+            innovation_score = innovation_score * (1 + sentiment['sentiment_score'] * 0.2)
+        
         return {
             'price': close_price,
             'rsi': rsi,
@@ -100,12 +107,13 @@ class TechDisruptor(BaseAgent):
             'is_breakout': bool(is_breakout),
             'innovation_score': float(innovation_score),
             'volatility': volatility,
+            'sentiment': sentiment,
             'timestamp': latest.name
         }
     
     def generate_signal(self, analysis: Dict) -> Dict:
         """
-        Generate trading signals based on tech disruption principles.
+        Generate trading signals based on tech disruption principles and news sentiment.
         Focuses on high momentum and breakthrough opportunities.
         """
         signal = {
@@ -122,16 +130,17 @@ class TechDisruptor(BaseAgent):
             1.0
         )
         
-        # Determine trend direction
-        trend_direction = 1 if float(analysis['trend_strength']) > 0 else -1 if float(analysis['trend_strength']) < 0 else 0
+        # Adjust confidence based on news sentiment
+        adjusted_confidence = self.adjust_confidence(base_confidence, analysis['sentiment'])
         
-        # Explosive breakout opportunity
+        # Explosive breakout opportunity with positive news
         if (analysis['is_breakout'] and
             float(analysis['momentum']) > self.trend_threshold * 2 and
-            float(analysis['volume_surge']) > self.volume_surge_threshold * 1.5):
+            float(analysis['volume_surge']) > self.volume_surge_threshold * 1.5 and
+            analysis['sentiment']['sentiment_score'] > 0.3):
             
             signal['action'] = 'STRONG_BUY'
-            signal['confidence'] = base_confidence * 0.95
+            signal['confidence'] = adjusted_confidence * 0.95
             
         # Strong momentum entry
         elif (analysis['is_breakout'] and
@@ -139,22 +148,23 @@ class TechDisruptor(BaseAgent):
               float(analysis['volume_surge']) > self.volume_surge_threshold):
             
             signal['action'] = 'BUY'
-            signal['confidence'] = base_confidence * 0.85
+            signal['confidence'] = adjusted_confidence * 0.85
             
         # Building momentum
         elif (float(analysis['momentum']) > self.trend_threshold * 0.5 and
               float(analysis['volume_surge']) > self.volume_surge_threshold * 0.8):
             
             signal['action'] = 'SCALE_IN'
-            signal['confidence'] = base_confidence * 0.75
+            signal['confidence'] = adjusted_confidence * 0.75
             
-        # Strong reversal
+        # Strong reversal with negative news
         elif (float(analysis['rsi']) < 20 and
               float(analysis['momentum']) < -self.trend_threshold * 2 and
-              float(analysis['trend_strength']) < -0.2):
+              float(analysis['trend_strength']) < -0.2 or
+              analysis['sentiment']['sentiment_score'] < -0.3):
             
             signal['action'] = 'STRONG_SELL'
-            signal['confidence'] = base_confidence * 0.9
+            signal['confidence'] = adjusted_confidence * 0.9
             
         # Momentum breakdown
         elif (float(analysis['rsi']) < 30 and
@@ -162,42 +172,49 @@ class TechDisruptor(BaseAgent):
               float(analysis['trend_strength']) < 0):
             
             signal['action'] = 'SELL'
-            signal['confidence'] = base_confidence * 0.8
+            signal['confidence'] = adjusted_confidence * 0.8
             
         # Taking profits
         elif (float(analysis['rsi']) > 80 or
               float(analysis['momentum']) < -self.trend_threshold * 0.5):
             
             signal['action'] = 'SCALE_OUT'
-            signal['confidence'] = base_confidence * 0.7
+            signal['confidence'] = adjusted_confidence * 0.7
             
         # Monitoring conditions
         elif (abs(float(analysis['momentum'])) < self.trend_threshold * 0.3 or
               float(analysis['volume_surge']) < 1.0):
             
             signal['action'] = 'WATCH'
-            signal['confidence'] = base_confidence * 0.6
+            signal['confidence'] = adjusted_confidence * 0.6
         
-        # Add Elon Musk-style commentary
+        # Add Elon Musk-style commentary with news sentiment
         signal['commentary'] = self._generate_musk_commentary(analysis, signal['action'])
         
         return signal
     
     def _generate_musk_commentary(self, analysis: Dict, action: str) -> str:
-        """Generate Elon Musk-style market commentary based on the action."""
+        """Generate Elon Musk-style market commentary based on the action and news."""
+        base_comment = ""
         if action == 'STRONG_BUY':
-            return "🚀 To Mars! Diamond hands activated! This is the way! 💎🙌"
+            base_comment = "🚀 To Mars! Diamond hands activated! This is the way! 💎🙌"
         elif action == 'BUY':
-            return "Funding secured! Time to launch! 🚀💫"
+            base_comment = "Funding secured! Time to launch! 🚀💫"
         elif action == 'SCALE_IN':
-            return "Building the future, one position at a time! 🏗️🔋"
+            base_comment = "Building the future, one position at a time! 🏗️🔋"
         elif action == 'STRONG_SELL':
-            return "Houston, we have a problem! Time to eject! 🔥"
+            base_comment = "Houston, we have a problem! Time to eject! 🔥"
         elif action == 'SELL':
-            return "Not stonks! Moving capital to Mars colony! 📉🛸"
+            base_comment = "Not stonks! Moving capital to Mars colony! 📉🛸"
         elif action == 'SCALE_OUT':
-            return "Taking some profits to fund the next moonshot! 🌙💰"
+            base_comment = "Taking some profits to fund the next moonshot! 🌙💰"
         elif action == 'WATCH':
-            return "Doing due diligence... might delete later! 🤔"
+            base_comment = "Doing due diligence... might delete later! 🤔"
         else:
-            return "HODL! We're still early! 💎🙌" 
+            base_comment = "HODL! We're still early! 💎🙌"
+        
+        # Add news sentiment commentary with tech-focused spin
+        news_comment = self.get_news_commentary(analysis['sentiment'])
+        innovation_comment = f"Innovation Score: {analysis['innovation_score']:.2f} 🔬"
+        
+        return f"{base_comment}\n{innovation_comment}\n{news_comment}" 
