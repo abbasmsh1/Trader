@@ -549,6 +549,57 @@ def create_dashboard(trading_system):
             html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
         ], className='nav-container'),
         
+        # Trading View Controls
+        html.Div([
+            html.Div([
+                html.Label("Timeframe"),
+                dcc.Dropdown(
+                    id='timeframe-dropdown',
+                    options=[
+                        {'label': '1 Hour', 'value': '1h'},
+                        {'label': '4 Hours', 'value': '4h'},
+                        {'label': '1 Day', 'value': '1d'}
+                    ],
+                    value='1h',
+                    className='dropdown'
+                ),
+                html.Label("Technical Indicators"),
+                dcc.Checklist(
+                    id='indicator-checklist',
+                    options=[
+                        {'label': 'SMA', 'value': 'SMA'},
+                        {'label': 'RSI', 'value': 'RSI'},
+                        {'label': 'MACD', 'value': 'MACD'},
+                        {'label': 'Bollinger Bands', 'value': 'BB'}
+                    ],
+                    value=['SMA', 'RSI'],
+                    className='indicator-checklist'
+                ),
+                html.Label("Chart Style"),
+                dcc.RadioItems(
+                    id='chart-style',
+                    options=[
+                        {'label': 'Candlestick', 'value': 'candlestick'},
+                        {'label': 'Line', 'value': 'line'},
+                        {'label': 'OHLC', 'value': 'ohlc'}
+                    ],
+                    value='candlestick',
+                    className='chart-style-radio'
+                ),
+                html.Label("Layout"),
+                dcc.RadioItems(
+                    id='layout-radio',
+                    options=[
+                        {'label': '2x2 Grid', 'value': '2x2'},
+                        {'label': '2x3 Grid', 'value': '2x3'},
+                        {'label': '1x4 List', 'value': '1x4'}
+                    ],
+                    value='2x2',
+                    className='layout-radio'
+                )
+            ], className='control-panel')
+        ], className='controls-container'),
+        
         # Auto-refresh interval (30 seconds)
         dcc.Interval(
             id='auto-refresh-interval',
@@ -563,8 +614,20 @@ def create_dashboard(trading_system):
             n_intervals=0
         ),
         
-        # Performance cards
-        html.Div(id='traders-performance-cards', className='performance-cards-grid'),
+        # Main content area
+        html.Div([
+            # Charts container
+            html.Div(id='multi-chart-container', className='chart-grid'),
+            
+            # Market Overview
+            html.Div(id='market-overview', className='market-overview'),
+            
+            # Signals Table
+            html.Div(id='signals-table', className='signals-table-container'),
+            
+            # Performance cards
+            html.Div(id='traders-performance-cards', className='performance-cards-grid')
+        ], className='main-content'),
         
         # Memory status indicator
         html.Div([
@@ -572,6 +635,155 @@ def create_dashboard(trading_system):
             html.Span("Memory system active", id="memory-status-text")
         ], id="memory-status", className="memory-status")
     ], className='dashboard-container')
+    
+    @app.callback(
+        [Output('multi-chart-container', 'children'),
+         Output('market-overview', 'children'),
+         Output('signals-table', 'children')],
+        [Input('auto-refresh-interval', 'n_intervals'),
+         Input('timeframe-dropdown', 'value'),
+         Input('indicator-checklist', 'value'),
+         Input('chart-style', 'value'),
+         Input('layout-radio', 'value')]
+    )
+    def update_trading_view(n, timeframe, indicators, chart_style, layout):
+        """Update the trading view components."""
+        try:
+            # Get market data for all symbols
+            charts = []
+            market_data = []
+            
+            for symbol in trading_system.symbols[:8]:  # Limit to 8 symbols for performance
+                df = trading_system.get_market_data(symbol)
+                if df.empty:
+                    continue
+                
+                # Create figure
+                fig = go.Figure()
+                
+                # Add price data based on chart style
+                if chart_style == 'candlestick':
+                    fig.add_trace(go.Candlestick(
+                        x=df.index,
+                        open=df['open'],
+                        high=df['high'],
+                        low=df['low'],
+                        close=df['close'],
+                        name=symbol
+                    ))
+                elif chart_style == 'line':
+                    fig.add_trace(go.Scatter(
+                        x=df.index,
+                        y=df['close'],
+                        mode='lines',
+                        name=symbol
+                    ))
+                else:  # OHLC
+                    fig.add_trace(go.Ohlc(
+                        x=df.index,
+                        open=df['open'],
+                        high=df['high'],
+                        low=df['low'],
+                        close=df['close'],
+                        name=symbol
+                    ))
+                
+                # Add indicators
+                if 'SMA' in indicators:
+                    sma20 = df['close'].rolling(window=20).mean()
+                    sma50 = df['close'].rolling(window=50).mean()
+                    fig.add_trace(go.Scatter(x=df.index, y=sma20, name='SMA 20', line=dict(color='orange')))
+                    fig.add_trace(go.Scatter(x=df.index, y=sma50, name='SMA 50', line=dict(color='blue')))
+                
+                if 'RSI' in indicators:
+                    delta = df['close'].diff()
+                    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+                    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+                    rs = gain / loss
+                    rsi = 100 - (100 / (1 + rs))
+                    fig.add_trace(go.Scatter(x=df.index, y=rsi, name='RSI', yaxis='y2'))
+                
+                # Update layout
+                fig.update_layout(
+                    title=symbol,
+                    template='plotly_dark',
+                    height=400,
+                    showlegend=True,
+                    xaxis_rangeslider_visible=False
+                )
+                
+                # Create chart container
+                chart = html.Div(dcc.Graph(figure=fig), className=f'chart-container-{layout}')
+                charts.append(chart)
+                
+                # Add to market data
+                current_price = float(df['close'].iloc[-1])
+                prev_price = float(df['close'].iloc[-2])
+                change_24h = ((current_price - prev_price) / prev_price) * 100
+                
+                market_data.append({
+                    'symbol': symbol,
+                    'price': current_price,
+                    'change_24h': change_24h,
+                    'volume': float(df['volume'].iloc[-1])
+                })
+            
+            # Create market overview
+            market_overview = html.Div([
+                html.Table([
+                    html.Thead(html.Tr([
+                        html.Th("Symbol"),
+                        html.Th("Price"),
+                        html.Th("24h Change"),
+                        html.Th("Volume")
+                    ])),
+                    html.Tbody([
+                        html.Tr([
+                            html.Td(data['symbol']),
+                            html.Td(f"${data['price']:,.2f}"),
+                            html.Td(
+                                f"{data['change_24h']:+.2f}%",
+                                className=f"{'positive' if data['change_24h'] > 0 else 'negative'}"
+                            ),
+                            html.Td(f"${data['volume']:,.0f}")
+                        ]) for data in market_data
+                    ])
+                ], className='market-overview-table')
+            ])
+            
+            # Create signals table
+            recent_signals = trading_system.signals_history[-10:]  # Get last 10 signals
+            signals_table = html.Div([
+                html.Table([
+                    html.Thead(html.Tr([
+                        html.Th("Time"),
+                        html.Th("Agent"),
+                        html.Th("Symbol"),
+                        html.Th("Action"),
+                        html.Th("Confidence"),
+                        html.Th("Status")
+                    ])),
+                    html.Tbody([
+                        html.Tr([
+                            html.Td(datetime.fromtimestamp(signal['timestamp']).strftime('%H:%M:%S')),
+                            html.Td(signal['agent']),
+                            html.Td(signal['symbol']),
+                            html.Td(signal['signal']['action']),
+                            html.Td(f"{signal['signal']['confidence']:.2f}"),
+                            html.Td(
+                                "✅ Executed" if signal.get('trade_executed', False) else "⏳ Pending",
+                                className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending'}"
+                            )
+                        ]) for signal in reversed(recent_signals)
+                    ])
+                ], className='signals-table-content')
+            ])
+            
+            return charts, market_overview, signals_table
+            
+        except Exception as e:
+            print(f"Error updating trading view: {str(e)}")
+            return [], html.Div("Error loading market data"), html.Div("Error loading signals")
     
     @app.callback(
         Output('traders-performance-cards', 'children'),
