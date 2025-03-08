@@ -68,6 +68,7 @@ class Wallet:
         """Calculate total wallet value in USDT."""
         total = self.balance_usdt
         for symbol, amount in self.holdings.items():
+            # Extract base currency from symbol (e.g., 'BTC/USDT' -> 'BTC/USDT')
             if symbol in current_prices:
                 total += amount * current_prices[symbol]
         return total
@@ -82,10 +83,20 @@ class Wallet:
         total_return = ((total_value - self.initial_balance_usdt) / 
                        self.initial_balance_usdt * 100)
         
+        holdings_with_prices = {}
+        for symbol, amount in self.holdings.items():
+            if symbol in current_prices:
+                holdings_with_prices[symbol] = {
+                    'amount': amount,
+                    'price': current_prices[symbol],
+                    'value_usdt': amount * current_prices[symbol]
+                }
+        
         return {
             'total_value_usdt': total_value,
             'balance_usdt': self.balance_usdt,
             'holdings': self.holdings.copy(),
+            'holdings_with_prices': holdings_with_prices,
             'total_return_pct': total_return,
             'trade_count': len(self.trades_history),
             'realized_pnl': self.balance_usdt - self.initial_balance_usdt

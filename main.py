@@ -186,7 +186,7 @@ class TradingSystem:
                         'risk_tolerance': agent.risk_tolerance,
                         'strategy': personality_traits,
                         'market_view': personality_traits.get('market_beliefs', {}),
-                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC': btc_price}),
+                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC/USDT': btc_price}),
                         'trade_executed': True,
                         'timestamp': datetime.now().timestamp()
                     })
@@ -529,492 +529,59 @@ class TradingSystem:
         return history
 
 def create_dashboard(trading_system: TradingSystem):
-    """
-    Create a modern and interactive Dash dashboard with multiple coin pairs.
-    """
+    """Create the trading dashboard."""
     app = dash.Dash(
         __name__,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
         suppress_callback_exceptions=True
     )
     
-    # Define theme colors
-    colors = {
-        'background': '#1a1a1a',  # Dark background
-        'text': '#ffffff',        # White text
-        'primary': '#2196F3',     # Blue primary color
-        'secondary': '#f50057',   # Pink secondary color
-        'success': '#4CAF50',     # Green success color
-        'warning': '#ff9800',     # Orange warning color
-        'error': '#f44336'        # Red error color
-    }
-    
-    # Define colors for different actions
-    action_colors = {
-        'STRONG_BUY': '#00ff00',    # Bright green
-        'BUY': '#4caf50',           # Regular green
-        'SCALE_IN': '#8bc34a',      # Light green
-        'WATCH': '#ffc107',         # Amber
-        'HOLD': '#9e9e9e',          # Grey
-        'SCALE_OUT': '#ff9800',     # Orange
-        'SELL': '#f44336',          # Red
-        'STRONG_SELL': '#d32f2f'    # Dark red
-    }
-    
+    # Create interval components for auto-refresh
     app.layout = html.Div([
-        # Header
-        html.Div([
-            html.H1("AI Crypto Trading Dashboard", className='dashboard-title'),
-            html.P("Trading bots competing to turn $20 into $100", className='dashboard-subtitle')
-        ], className='header'),
-        
-        # Navigation
-        html.Div([
-            html.Button("Trading View", id='nav-trading-view', className='nav-button active'),
-            html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
-        ], className='nav-container'),
-        
-        # Main content
-        html.Div(id='page-content'),
-        
-        # Memory status indicator
-        html.Div([
-            html.Span("💾", className="icon"),
-            html.Span("Memory system active", id="memory-status-text")
-        ], id="memory-status", className="memory-status"),
-        
-        # Interval component for auto-refresh
+        # Auto-refresh interval (30 seconds)
         dcc.Interval(
-            id='interval-component',
-            interval=30 * 1000,  # 30 seconds
+            id='auto-refresh-interval',
+            interval=30 * 1000,  # in milliseconds
             n_intervals=0
         ),
-        
-        # Interval for memory status updates
+        # Memory save interval (5 minutes)
         dcc.Interval(
             id='memory-save-interval',
-            interval=300 * 1000,  # 5 minutes
+            interval=5 * 60 * 1000,  # in milliseconds
             n_intervals=0
-        )
-    ], className='container')
-    
-    @app.callback(
-        [Output('page-content', 'children'),
-         Output('nav-trading-view', 'className'),
-         Output('nav-traders-comparison', 'className')],
-        [Input('nav-trading-view', 'n_clicks'),
-         Input('nav-traders-comparison', 'n_clicks')]
-    )
-    def render_content(trading_view_clicks, traders_comparison_clicks):
-        """Render the appropriate content based on navigation clicks."""
-        ctx = callback_context
-        
-        if not ctx.triggered:
-            button_id = 'nav-trading-view'  # Default view
-        else:
-            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
-        
-        if button_id == 'nav-trading-view':
-            return create_trading_view(trading_system), 'nav-button active', 'nav-button'
-        elif button_id == 'nav-traders-comparison':
-            return create_traders_comparison(trading_system), 'nav-button', 'nav-button active'
-            
-        # Default fallback
-        return create_trading_view(trading_system), 'nav-button active', 'nav-button'
-    
-    def create_trading_view(trading_system):
-        """Create the main trading view layout."""
-        # Group symbols by type (USDT pairs and coin-to-coin pairs)
-        usdt_pairs = [s for s in trading_system.symbols if s.endswith('/USDT')]
-        coin_pairs = [s for s in trading_system.symbols if not s.endswith('/USDT')]
-        
-        return html.Div([
-            # Main content
+        ),
+        # Main content
+        html.Div([
+            # Header
             html.Div([
-                # Left panel - Controls
-                html.Div([
-                    html.Div([
-                        html.H3("Trading Controls", className='panel-title'),
-                        
-                        # Display the symbols as tags instead of dropdowns
-                        html.Div([
-                            html.Label("USDT Pairs", className='section-label'),
-                            html.Div([
-                                html.Span(s.replace('/USDT', ''), className='coin-tag usdt-pair')
-                                for s in usdt_pairs
-                            ], className='coin-tags-container')
-                        ], className='coin-section'),
-                        
-                        html.Div([
-                            html.Label("Coin-to-Coin Pairs", className='section-label'),
-                            html.Div([
-                                html.Span(s, className='coin-tag coin-pair')
-                                for s in coin_pairs
-                            ], className='coin-tags-container')
-                        ], className='coin-section'),
-                        
-                        html.Label("Timeframe"),
-                        dcc.Dropdown(
-                            id='timeframe-dropdown',
-                            options=[{'label': v, 'value': k} for k, v in TIMEFRAMES.items()],
-                            value='1h',
-                            className='dropdown'
-                        ),
-                        html.Label("Technical Indicators"),
-                        dcc.Checklist(
-                            id='indicator-checklist',
-                            options=[
-                                {'label': 'Moving Averages', 'value': 'SMA'},
-                                {'label': 'RSI', 'value': 'RSI'},
-                                {'label': 'MACD', 'value': 'MACD'},
-                                {'label': 'Bollinger Bands', 'value': 'BB'}
-                            ],
-                            value=['SMA', 'RSI'],
-                            className='indicator-checklist'
-                        ),
-                        html.Label("Chart Style"),
-                        dcc.RadioItems(
-                            id='chart-style',
-                            options=[
-                                {'label': 'Candlestick', 'value': 'candlestick'},
-                                {'label': 'Line', 'value': 'line'},
-                                {'label': 'OHLC', 'value': 'ohlc'}
-                            ],
-                            value='candlestick',
-                            className='chart-style-radio'
-                        ),
-                        html.Div([
-                            html.Label("Auto Refresh"),
-                            dcc.Checklist(
-                                id='auto-refresh-switch',
-                                options=[{'label': 'Enabled', 'value': 'enabled'}],
-                                value=['enabled'],
-                                className='auto-refresh-toggle'
-                            )
-                        ], className='switch-container'),
-                        html.Div([
-                            html.Label("Auto Trading"),
-                            dcc.Checklist(
-                                id='auto-trading-switch',
-                                options=[{'label': 'Enabled', 'value': 'enabled'}],
-                                value=['enabled'] if trading_system.auto_trading_enabled else [],
-                                className='auto-trading-toggle'
-                            )
-                        ], className='switch-container'),
-                        html.Div([
-                            html.Label("Chart Layout"),
-                            dcc.RadioItems(
-                                id='layout-radio',
-                                options=[
-                                    {'label': '2x2 Grid', 'value': '2x2'},
-                                    {'label': '1x4 Row', 'value': '1x4'},
-                                    {'label': '2x3 Grid', 'value': '2x3'},
-                                    {'label': '3x3 Grid', 'value': '3x3'},
-                                    {'label': '4x4 Grid', 'value': '4x4'}
-                                ],
-                                value='3x3',
-                                className='layout-radio'
-                            )
-                        ], className='layout-container')
-                    ], className='control-panel')
-                ], className='left-panel'),
-                
-                # Right panel - Charts and Data
-                html.Div([
-                    # Charts Container
-                    html.Div(id='multi-chart-container', className='chart-grid'),
-                    
-                    # Market Overview
-                    html.Div([
-                        html.H3("Market Overview", className='panel-title'),
-                        html.Div(id='market-overview', className='market-overview')
-                    ], className='chart-panel'),
-                    
-                    # Trading Signals
-                    html.Div([
-                        html.H3("Latest Trading Signals", className='panel-title'),
-                        html.Div(id='signals-table', className='signals-table')
-                    ], className='signals-panel')
-                ], className='right-panel')
-            ], className='main-content')
-        ], className='trading-view')
-    
-    def create_traders_comparison(trading_system):
-        """Create the traders comparison view."""
-        return html.Div([
-            # Portfolio Overview Section
+                html.H1("AI Crypto Trading Dashboard", className='dashboard-title'),
+                html.P("Trading bots competing to turn $20 into $100", className='dashboard-subtitle')
+            ], className='header'),
+            
+            # Navigation
             html.Div([
-                html.H2("Traders Portfolio Overview", className='section-title'),
-                
-                # Total Holdings Summary Cards
-                html.Div([
-                    html.Div([
-                        html.Div([
-                            html.H3("Total Holdings (USDT)", className='holdings-title'),
-                            html.Div([
-                                create_holdings_summary(trading_system)
-                            ], className='holdings-summary-container')
-                        ], className='card-content')
-                    ], className='holdings-summary-card')
-                ], className='holdings-summary-section'),
-                
-                # Performance metrics
-                html.Div(id='traders-performance-cards', className='performance-cards-container'),
-                
-                # Portfolio value chart
-                html.Div([
-                    html.H3("Portfolio Value Comparison", className='subsection-title'),
-                    html.Div(id='portfolio-value-chart', className='portfolio-chart')
-                ], className='chart-section'),
-                
-                # Holdings comparison
-                html.Div([
-                    html.H3("Holdings Breakdown", className='subsection-title'),
-                    html.Div(id='holdings-comparison', className='holdings-comparison')
-                ], className='chart-section'),
-                
-                # Holdings history
-                html.Div([
-                    html.H3("Holdings History", className='subsection-title'),
-                    html.Div([
-                        html.Div([
-                            html.Label("Select Trader"),
-                            dcc.Dropdown(
-                                id='trader-history-dropdown',
-                                options=[{'label': agent.name, 'value': agent.name} for agent in trading_system.agents],
-                                value=trading_system.agents[0].name if trading_system.agents else None,
-                                className='dropdown'
-                            )
-                        ], className='history-control'),
-                        html.Div([
-                            html.Label("Timeframe"),
-                            dcc.RadioItems(
-                                id='history-timeframe-radio',
-                                options=[
-                                    {'label': 'Day', 'value': 'day'},
-                                    {'label': 'Week', 'value': 'week'},
-                                    {'label': 'Month', 'value': 'month'},
-                                    {'label': 'All', 'value': 'all'}
-                                ],
-                                value='day',
-                                className='history-timeframe-radio'
-                            )
-                        ], className='history-control')
-                    ], className='history-controls'),
-                    html.Div(id='holdings-history-chart', className='history-chart')
-                ], className='chart-section'),
-                
-                # Trade activity
-                html.Div([
-                    html.H3("Trade Activity", className='subsection-title'),
-                    html.Div(id='trade-activity-comparison', className='trade-activity')
-                ], className='chart-section'),
-                
-                # Trade history section
-                create_trade_history(trading_system)
-            ], className='traders-comparison-view')
-        ])
-        
-    def create_holdings_summary(trading_system):
-        """Create a summary of total holdings for each trader."""
-        # Get current prices for all symbols
-        current_prices = {}
-        for symbol in trading_system.symbols:
-            try:
-                if symbol.endswith('/USDT'):
-                    df = trading_system.get_market_data(symbol)
-                    if not df.empty:
-                        base_currency = symbol.split('/')[0]
-                        current_prices[base_currency] = float(df['close'].iloc[-1])
-            except Exception as e:
-                print(f"Error getting price for {symbol}: {str(e)}")
-        
-        # Get performance data for each agent
-        performance_data = []
-        for agent in trading_system.agents:
-            # Get wallet metrics
-            metrics = agent.wallet.get_performance_metrics(current_prices)
-            total_value = metrics['total_value_usdt']
-            usdt_balance = metrics['balance_usdt']
+                html.Button("Trading View", id='nav-trading-view', className='nav-button active'),
+                html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button')
+            ], className='nav-container'),
             
-            # Calculate crypto holdings value
-            crypto_value = total_value - usdt_balance
+            # Page content
+            html.Div(id='page-content'),
             
-            # Calculate goal progress
-            goal_progress = total_value / 100.0
-            goal_status = "Goal Reached! 🏆" if goal_progress >= 1.0 else f"{goal_progress*100:.1f}% to $100"
-            
-            # Calculate crypto allocation
-            crypto_percentage = (crypto_value / total_value) * 100 if total_value > 0 else 0
-            usdt_percentage = (usdt_balance / total_value) * 100 if total_value > 0 else 0
-            
-            # Store the data
-            performance_data.append({
-                'agent': agent,
-                'name': agent.name,
-                'personality': agent.get_personality_traits()['personality'],
-                'total_value': total_value,
-                'usdt_balance': usdt_balance,
-                'crypto_value': crypto_value,
-                'crypto_percentage': crypto_percentage,
-                'usdt_percentage': usdt_percentage,
-                'goal_progress': goal_progress,
-                'goal_status': goal_status
-            })
-        
-        # Sort by total value (highest first)
-        performance_data.sort(key=lambda x: x['total_value'], reverse=True)
-        
-        # Create summary cards
-        summary_cards = []
-        for i, data in enumerate(performance_data):
-            # Create the summary card
-            card = html.Div([
-                html.Div([
-                    html.Div([
-                        html.Span(data['name'].replace(' AI', ''), className='agent-name'),
-                        html.Span(data['personality'], 
-                                 className=f"agent-badge {data['personality'].lower()}")
-                    ], className='summary-header'),
-                    
-                    html.Div([
-                        html.Div(f"${data['total_value']:.2f}", className='total-value'),
-                        html.Div("Total Wallet Value", className='value-label')
-                    ], className='value-container'),
-                    
-                    # Wallet composition visualization
-                    html.Div([
-                        html.Div("Wallet Composition", className='composition-title'),
-                        html.Div(className='composition-bar', children=[
-                            html.Div(
-                                className='usdt-portion',
-                                style={'width': f"{data['usdt_percentage']}%"}
-                            ),
-                            html.Div(
-                                className='crypto-portion',
-                                style={'width': f"{data['crypto_percentage']}%"}
-                            )
-                        ]),
-                        html.Div(className='composition-legend', children=[
-                            html.Div([
-                                html.Span(className='usdt-dot'),
-                                html.Span(f"USDT: ${data['usdt_balance']:.2f} ({data['usdt_percentage']:.1f}%)")
-                            ], className='legend-item'),
-                            html.Div([
-                                html.Span(className='crypto-dot'),
-                                html.Span(f"Crypto: ${data['crypto_value']:.2f} ({data['crypto_percentage']:.1f}%)")
-                            ], className='legend-item')
-                        ])
-                    ], className='wallet-composition'),
-                    
-                    html.Div([
-                        html.Div(className='goal-progress-bar', children=[
-                            html.Div(
-                                className='goal-progress-fill',
-                                style={'width': f"{min(100, data['goal_progress']*100)}%"}
-                            )
-                        ]),
-                        html.Div(data['goal_status'], className='goal-status')
-                    ], className='goal-container')
-                ], className='summary-content')
-            ], className=f"holdings-summary-card {i == 0 and 'leading' or ''}")
-            
-            summary_cards.append(card)
-        
-        return html.Div(summary_cards, className='holdings-summary-grid')
+            # Memory status indicator
+            html.Div([
+                html.Span("💾", className="icon"),
+                html.Span("Memory system active", id="memory-status-text")
+            ], id="memory-status", className="memory-status")
+        ], className='dashboard-container')
+    ])
     
-    def create_trade_history(trading_system):
-        """Create a component to display trade history for each trader."""
-        trade_history_cards = []
-        
-        for agent in trading_system.agents:
-            # Get trade history from wallet
-            trades = agent.wallet.trades_history
-            
-            if not trades:
-                # No trades yet
-                card = html.Div([
-                    html.Div([
-                        html.H3([
-                            html.Span(agent.name.replace(' AI', ''), className='agent-name'),
-                            html.Span(agent.get_personality_traits()['personality'], 
-                                     className=f"agent-badge {agent.get_personality_traits()['personality'].lower()}")
-                        ]),
-                        html.Div("No trades executed yet", className='no-trades-message')
-                    ], className='card-content')
-                ], className='trade-history-card')
-            else:
-                # Sort trades by timestamp (newest first)
-                sorted_trades = sorted(trades, key=lambda x: x['timestamp'], reverse=True)
-                
-                # Create trade list
-                trade_items = []
-                for trade in sorted_trades[:10]:  # Show only the 10 most recent trades
-                    # Format timestamp
-                    timestamp = trade['timestamp']
-                    if isinstance(timestamp, datetime):
-                        time_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
-                    else:
-                        time_str = "Unknown time"
-                    
-                    # Determine trade class based on action
-                    trade_class = 'trade-buy' if trade['action'] == 'BUY' else 'trade-sell'
-                    
-                    # Format amounts
-                    amount_usdt = f"${trade['amount_usdt']:.2f}"
-                    amount_crypto = f"{trade['amount_crypto']:.8f}"
-                    
-                    # Create trade item
-                    trade_item = html.Div([
-                        html.Div([
-                            html.Span(trade['action'], className=f'trade-action {trade_class}'),
-                            html.Span(trade['symbol'], className='trade-symbol')
-                        ], className='trade-header'),
-                        html.Div([
-                            html.Div([
-                                html.Span("Amount: ", className='trade-label'),
-                                html.Span(f"{amount_crypto} @ ${trade['price']:.2f}", className='trade-value')
-                            ], className='trade-detail'),
-                            html.Div([
-                                html.Span("Value: ", className='trade-label'),
-                                html.Span(amount_usdt, className='trade-value')
-                            ], className='trade-detail'),
-                            html.Div([
-                                html.Span("Time: ", className='trade-label'),
-                                html.Span(time_str, className='trade-value trade-time')
-                            ], className='trade-detail')
-                        ], className='trade-details')
-                    ], className=f'trade-item {trade_class}')
-                    
-                    trade_items.append(trade_item)
-                
-                # Create card with trades
-                card = html.Div([
-                    html.Div([
-                        html.H3([
-                            html.Span(agent.name.replace(' AI', ''), className='agent-name'),
-                            html.Span(agent.get_personality_traits()['personality'], 
-                                     className=f"agent-badge {agent.get_personality_traits()['personality'].lower()}")
-                        ]),
-                        html.Div(f"Total trades: {len(trades)}", className='trade-count'),
-                        html.Div(trade_items, className='trade-list')
-                    ], className='card-content')
-                ], className='trade-history-card')
-            
-            trade_history_cards.append(card)
-        
-        return html.Div([
-            html.H2("Trade History", className='section-title'),
-            html.Div(trade_history_cards, className='trade-history-container')
-        ], className='trade-history-section')
-    
-    # Callback to update traders comparison view
+    # Update all callbacks to use the auto-refresh interval
     @app.callback(
         [Output('traders-performance-cards', 'children'),
          Output('portfolio-value-chart', 'children'),
          Output('holdings-comparison', 'children'),
          Output('trade-activity-comparison', 'children')],
-        [Input('interval-component', 'n_intervals')]
+        [Input('auto-refresh-interval', 'n_intervals')]
     )
     def update_traders_comparison(n):
         """Update the traders comparison view."""
@@ -1022,260 +589,122 @@ def create_dashboard(trading_system: TradingSystem):
             # Get current prices for all symbols
             current_prices = {}
             for symbol in trading_system.symbols:
-                try:
-                    if symbol.endswith('/USDT'):
-                        df = trading_system.get_market_data(symbol)
-                        if not df.empty:
-                            base_currency = symbol.split('/')[0]
-                            current_prices[base_currency] = float(df['close'].iloc[-1])
-                except Exception as e:
-                    print(f"Error getting price for {symbol}: {str(e)}")
+                if symbol.endswith('/USDT'):
+                    df = trading_system.get_market_data(symbol)
+                    if not df.empty:
+                        current_prices[symbol] = float(df['close'].iloc[-1])
             
-            # Get performance metrics for each agent
+            # Get performance data for each agent
             performance_data = []
             for agent in trading_system.agents:
-                metrics = agent.wallet.get_performance_metrics(current_prices)
-                
-                # Calculate progress toward $100 goal
-                goal_progress = metrics['total_value_usdt'] / 100.0
-                goal_status = "Reached!" if goal_progress >= 1.0 else f"{goal_progress*100:.1f}%"
-                
-                # Calculate holdings with USDT values
-                holdings_with_value = []
-                for symbol, amount in metrics['holdings'].items():
-                    if symbol in current_prices:
-                        usdt_value = amount * current_prices[symbol]
-                        percentage = (usdt_value / metrics['total_value_usdt']) * 100 if metrics['total_value_usdt'] > 0 else 0
-                        holdings_with_value.append({
-                            'symbol': symbol,
-                            'amount': amount,
-                            'price': current_prices[symbol],
-                            'usdt_value': usdt_value,
-                            'percentage': percentage
-                        })
-                
-                # Sort holdings by USDT value (highest first)
-                holdings_with_value.sort(key=lambda x: x['usdt_value'], reverse=True)
-                
-                performance_data.append({
-                    'agent': agent.name,
-                    'personality': agent.get_personality_traits()['personality'],
-                    'total_value': metrics['total_value_usdt'],
-                    'balance_usdt': metrics['balance_usdt'],
-                    'holdings': metrics['holdings'],
-                    'holdings_with_value': holdings_with_value,
-                    'total_return': metrics['total_return_pct'],
-                    'trade_count': metrics['trade_count'],
-                    'goal_progress': goal_progress,
-                    'goal_status': goal_status
-                })
+                try:
+                    # Get wallet metrics with full symbol names
+                    metrics = agent.wallet.get_performance_metrics(current_prices)
+                    total_value = metrics['total_value_usdt']
+                    usdt_balance = metrics['balance_usdt']
+                    holdings = metrics['holdings_with_prices']
+                    
+                    # Calculate crypto value
+                    crypto_value = total_value - usdt_balance
+                    
+                    # Sort holdings by USDT value
+                    sorted_holdings = sorted(
+                        [(symbol, data) for symbol, data in holdings.items()],
+                        key=lambda x: x[1]['value_usdt'],
+                        reverse=True
+                    )
+                    
+                    # Format holdings for display
+                    holdings_display = []
+                    for symbol, data in sorted_holdings:
+                        if data['amount'] > 0:
+                            display_symbol = symbol.replace('/USDT', '')
+                            holdings_display.append({
+                                'symbol': display_symbol,
+                                'amount': data['amount'],
+                                'price': data['price'],
+                                'value_usdt': data['value_usdt']
+                            })
+                    
+                    # Calculate goal progress
+                    goal_progress = (total_value / 100.0) * 100  # Convert to percentage
+                    goal_status = "Goal Reached! 🏆" if goal_progress >= 100 else f"{goal_progress:.1f}% to $100"
+                    
+                    # Store the data
+                    performance_data.append({
+                        'name': agent.name,
+                        'personality': agent.get_personality_traits()['personality'],
+                        'total_value': total_value,
+                        'usdt_balance': usdt_balance,
+                        'crypto_value': crypto_value,
+                        'holdings': holdings_display,
+                        'goal_progress': goal_progress,
+                        'goal_status': goal_status
+                    })
+                except Exception as e:
+                    print(f"Error getting performance data for {agent.name}: {str(e)}")
+                    continue
             
-            # Sort by total value (best performing first)
+            # Sort by total value
             performance_data.sort(key=lambda x: x['total_value'], reverse=True)
             
             # Create performance cards
-            performance_cards = html.Div([
-                html.Div([
+            cards = []
+            for data in performance_data:
+                card = html.Div([
                     html.Div([
                         html.H3([
-                            html.Span(data['agent'].replace(' AI', ''), className='agent-name'),
+                            html.Span(data['name'].replace(' AI', ''), className='agent-name'),
                             html.Span(data['personality'], className=f"agent-badge {data['personality'].lower()}")
                         ]),
                         html.Div([
-                            html.Div(f"${data['total_value']:.2f}", className='metric-value'),
-                            html.Div("Total Value", className='metric-label')
-                        ], className='metric'),
+                            html.Div(f"${data['total_value']:.2f}", className='total-value'),
+                            html.Div([
+                                html.Span("USDT: ", className='balance-label'),
+                                html.Span(f"${data['usdt_balance']:.2f}", className='balance-value')
+                            ], className='balance-row'),
+                            html.Div([
+                                html.Span("Crypto: ", className='balance-label'),
+                                html.Span(f"${data['crypto_value']:.2f}", className='balance-value')
+                            ], className='balance-row')
+                        ], className='balance-container'),
                         html.Div([
-                            html.Div(f"{data['total_return']:.2f}%", 
-                                    className=f"metric-value {'positive' if data['total_return'] > 0 else 'negative'}"),
-                            html.Div("Return", className='metric-label')
-                        ], className='metric'),
+                            html.H4("Holdings", className='holdings-title'),
+                            html.Div([
+                                html.Div([
+                                    html.Span(f"{h['symbol']}: ", className='holding-symbol'),
+                                    html.Span(
+                                        f"{h['amount']:.8f} @ ${h['price']:.2f}",
+                                        className='holding-amount'
+                                    ),
+                                    html.Span(f"(${h['value_usdt']:.2f})", className='holding-value')
+                                ], className='holding-row')
+                                for h in data['holdings']
+                            ], className='holdings-list')
+                        ], className='holdings-container'),
                         html.Div([
-                            html.Div(f"{data['trade_count']}", className='metric-value'),
-                            html.Div("Trades", className='metric-label')
-                        ], className='metric'),
-                        html.Div([
-                            html.Div(className='progress-bar-container', children=[
+                            html.Div(className='goal-progress-bar', children=[
                                 html.Div(
-                                    className='progress-bar',
-                                    style={'width': f"{min(100, data['goal_progress']*100)}%"}
-                                ),
-                                html.Span(
-                                    data['goal_status'], 
-                                    className=f"progress-text {'' if data['goal_progress'] < 1.0 else 'goal-reached'}"
+                                    className='goal-progress-fill',
+                                    style={'width': f"{min(100, data['goal_progress'])}%"}
                                 )
                             ]),
-                            html.Div("Goal Progress ($100)", className='metric-label')
-                        ], className='metric goal-metric'),
+                            html.Div(data['goal_status'], className='goal-status')
+                        ], className='goal-container')
                     ], className='card-content')
-                ], className=f"performance-card {'winner' if i == 0 else ''}") 
-                for i, data in enumerate(performance_data)
-            ], className='performance-cards-container')
+                ], className='performance-card')
+                cards.append(card)
             
-            # Create portfolio value chart
-            fig = go.Figure()
-            
-            for data in performance_data:
-                # Add a horizontal bar for each agent
-                fig.add_trace(go.Bar(
-                    y=[data['agent'].replace(' AI', '')],
-                    x=[data['total_value']],
-                    orientation='h',
-                    name=data['agent'].replace(' AI', ''),
-                    marker=dict(
-                        color='#4CAF50' if data['goal_progress'] >= 1.0 else '#2196F3',
-                        line=dict(color='rgba(0,0,0,0)', width=0)
-                    ),
-                    hovertemplate='$%{x:.2f}<extra></extra>'
-                ))
-                
-                # Add a marker for the $100 goal
-                fig.add_shape(
-                    type="line",
-                    x0=100, x1=100,
-                    y0=-0.5, y1=len(performance_data) - 0.5,
-                    line=dict(color="#FF9800", width=2, dash="dash"),
-                )
-                
-            fig.update_layout(
-                title="Portfolio Value Comparison",
-                template='plotly_dark',
-                height=300,
-                margin=dict(l=0, r=0, t=40, b=0),
-                xaxis_title="Value (USDT)",
-                showlegend=False,
-                xaxis=dict(
-                    gridcolor='rgba(255,255,255,0.1)',
-                    zerolinecolor='rgba(255,255,255,0.1)'
-                ),
-                yaxis=dict(
-                    gridcolor='rgba(255,255,255,0.1)',
-                    zerolinecolor='rgba(255,255,255,0.1)'
-                ),
-                annotations=[
-                    dict(
-                        x=100,
-                        y=len(performance_data),
-                        xref="x",
-                        yref="y",
-                        text="$100 Goal",
-                        showarrow=True,
-                        arrowhead=2,
-                        ax=0,
-                        ay=-30,
-                        font=dict(color="#FF9800")
-                    )
-                ]
+            return (
+                html.Div(cards, className='performance-cards-grid'),
+                create_portfolio_value_chart(performance_data),
+                create_holdings_comparison(performance_data),
+                create_trade_activity(performance_data)
             )
-            
-            portfolio_chart = html.Div([
-                dcc.Graph(
-                    figure=fig,
-                    config={'displayModeBar': False}
-                )
-            ], className='portfolio-chart')
-            
-            # Create enhanced holdings comparison with USDT values
-            holdings_comparison = html.Div([
-                html.Div([
-                    html.Div([
-                        # Header with agent name and total value
-                        html.Div([
-                            html.H4(data['agent'].replace(' AI', ''), className='holdings-card-title'),
-                            html.Div(f"Total Value: ${data['total_value']:.2f}", className='holdings-total-value')
-                        ], className='holdings-card-header'),
-                        
-                        # Wallet composition visualization
-                        html.Div([
-                            html.Div(className='wallet-bar', children=[
-                                html.Div(
-                                    className='usdt-bar',
-                                    style={'width': f"{data['balance_usdt'] / data['total_value'] * 100 if data['total_value'] > 0 else 0}%"}
-                                ),
-                                html.Div(
-                                    className='crypto-bar',
-                                    style={'width': f"{(data['total_value'] - data['balance_usdt']) / data['total_value'] * 100 if data['total_value'] > 0 else 0}%"}
-                                )
-                            ]),
-                            html.Div(className='wallet-legend', children=[
-                                html.Div([
-                                    html.Span("USDT:", className='legend-label'),
-                                    html.Span(f"${data['balance_usdt']:.2f}", className='legend-value')
-                                ], className='legend-row'),
-                                html.Div([
-                                    html.Span("Crypto:", className='legend-label'),
-                                    html.Span(f"${(data['total_value'] - data['balance_usdt']):.2f}", className='legend-value')
-                                ], className='legend-row')
-                            ])
-                        ], className='wallet-summary'),
-                        
-                        # Detailed Holdings with USDT values
-                        html.Div([
-                            html.H5("Crypto Holdings", className='holdings-subtitle'),
-                            html.Table([
-                                html.Thead(
-                                    html.Tr([
-                                        html.Th("Asset"),
-                                        html.Th("Amount"),
-                                        html.Th("Price (USDT)"),
-                                        html.Th("Value (USDT)"),
-                                        html.Th("% of Portfolio")
-                                    ])
-                                ),
-                                html.Tbody([
-                                    html.Tr([
-                                        html.Td([
-                                            get_coin_category_span(holding['symbol']),
-                                            html.Span(holding['symbol'])
-                                        ], className='asset-cell'),
-                                        html.Td(f"{holding['amount']:.8f}", className='amount-cell'),
-                                        html.Td(f"${holding['price']:.2f}", className='price-cell'),
-                                        html.Td(f"${holding['usdt_value']:.2f}", className='value-cell'),
-                                        html.Td([
-                                            html.Div(className='percentage-bar-container', children=[
-                                                html.Div(
-                                                    className='percentage-bar',
-                                                    style={'width': f"{min(100, holding['percentage'])}%"}
-                                                ),
-                                                html.Span(f"{holding['percentage']:.1f}%", className='percentage-text')
-                                            ])
-                                        ], className='percentage-cell')
-                                    ], className=f"holding-row {i % 2 == 0 and 'even' or 'odd'}") 
-                                    for i, holding in enumerate(data['holdings_with_value'])
-                                ] if data['holdings_with_value'] else [
-                                    html.Tr([
-                                        html.Td(
-                                            "No crypto holdings", 
-                                            colSpan=5, 
-                                            className='no-holdings-message'
-                                        )
-                                    ])
-                                ])
-                            ], className='holdings-table')
-                        ], className='holdings-detail')
-                    ], className='holdings-card')
-                    for data in performance_data
-                ], className='holdings-grid')
-            ], className='holdings-comparison')
-            
-            # Create trade activity comparison
-            trade_activity = html.Div([
-                html.Div(id='trade-activity-content', children=[
-                    html.Div("Loading trade activity...", className='loading-message')
-                ])
-            ], className='trade-activity-comparison')
-            
-            return performance_cards, portfolio_chart, holdings_comparison, trade_activity
-            
         except Exception as e:
             print(f"Error updating traders comparison: {str(e)}")
-            return (
-                html.Div(f"Error loading performance data: {str(e)}"),
-                html.Div("Error loading portfolio chart"),
-                html.Div("Error loading holdings comparison"),
-                html.Div("Error loading trade activity")
-            )
-            
+            return dash.no_update
+    
     def get_coin_category_span(symbol):
         """Get a span element with the appropriate coin category styling."""
         if symbol in ['BTC', 'ETH', 'BNB', 'SOL', 'ADA']:
@@ -3350,6 +2779,100 @@ def create_dashboard(trading_system: TradingSystem):
                     background: rgba(255, 0, 0, 0.1);
                     border-radius: 4px;
                     margin: 20px 0;
+                }
+                
+                .performance-cards-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 20px;
+                    padding: 20px;
+                }
+                
+                .performance-card {
+                    background: var(--card-bg);
+                    border-radius: 8px;
+                    padding: 20px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    transition: transform 0.2s;
+                }
+                
+                .performance-card.winner {
+                    background: linear-gradient(135deg, var(--card-bg), var(--primary-color-dark));
+                    border: 1px solid var(--primary-color);
+                }
+                
+                .performance-card:hover {
+                    transform: translateY(-2px);
+                }
+                
+                .card-content {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 15px;
+                }
+                
+                .metric {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                
+                .metric-value {
+                    font-size: 1.5em;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                }
+                
+                .metric-value.positive {
+                    color: var(--success-color);
+                }
+                
+                .metric-value.negative {
+                    color: var(--error-color);
+                }
+                
+                .metric-label {
+                    font-size: 0.9em;
+                    color: var(--text-secondary);
+                }
+                
+                .agent-name {
+                    font-size: 1.2em;
+                    font-weight: 600;
+                    color: var(--text-primary);
+                    margin-right: 10px;
+                }
+                
+                .agent-badge {
+                    font-size: 0.8em;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    background: var(--primary-color);
+                    color: white;
+                }
+                
+                .agent-badge.value {
+                    background: #2E7D32;
+                }
+                
+                .agent-badge.tech {
+                    background: #1976D2;
+                }
+                
+                .agent-badge.technical {
+                    background: #7B1FA2;
+                }
+                
+                .agent-badge.contrarian {
+                    background: #D32F2F;
+                }
+                
+                .agent-badge.macro {
+                    background: #F57C00;
+                }
+                
+                .agent-badge.swing {
+                    background: #00796B;
                 }
             </style>
         </head>

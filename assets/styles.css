@@ -1,0 +1,225 @@
+/* CSS Variables */
+:root {
+    --card-bg: #1E1E1E;
+    --text-primary: #ffffff;
+    --text-secondary: #a8b2c1;
+    --primary-color: #2196F3;
+    --success-color: #4CAF50;
+    --error-color: #f44336;
+    --border-color: #3d4c5e;
+    --input-bg: #283442;
+}
+
+/* Base styles */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    background-color: #121212;
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.dashboard-container {
+    padding: 20px;
+    max-width: 1800px;
+    margin: 0 auto;
+}
+
+/* Header styles */
+.header {
+    text-align: center;
+    padding: 30px 20px;
+    background: linear-gradient(135deg, #1a237e, #0d47a1);
+    border-radius: 15px;
+    margin-bottom: 30px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+}
+
+.dashboard-title {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 2.8em;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.dashboard-subtitle {
+    color: var(--text-secondary);
+    margin: 10px 0 0 0;
+    font-size: 1.2em;
+}
+
+/* Navigation styles */
+.nav-container {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.nav-button {
+    background-color: #252525;
+    color: var(--text-primary);
+    border: none;
+    padding: 12px 25px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 1.1em;
+    font-weight: 500;
+}
+
+.nav-button:hover {
+    background-color: #333333;
+    transform: translateY(-2px);
+}
+
+.nav-button.active {
+    background-color: #333333;
+    color: var(--primary-color);
+}
+
+/* Memory status styles */
+.memory-status {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, var(--primary-color), #0D47A1);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    z-index: 1000;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+}
+
+.memory-status.saved {
+    background: linear-gradient(135deg, var(--success-color), #2E7D32);
+    animation: fadeOut 3s forwards;
+    animation-delay: 2s;
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(20px); visibility: hidden; }
+}
+
+.performance-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    padding: 20px;
+}
+
+.performance-card {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.total-value {
+    font-size: 1.8em;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 10px;
+}
+
+.balance-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    background: rgba(0,0,0,0.1);
+    border-radius: 4px;
+}
+
+.balance-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.balance-label {
+    color: var(--text-secondary);
+}
+
+.balance-value {
+    font-family: monospace;
+    color: var(--text-primary);
+}
+
+.holdings-container {
+    margin-top: 10px;
+}
+
+.holdings-title {
+    font-size: 1em;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+
+.holdings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.holding-row {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+}
+
+.holding-symbol {
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-right: 8px;
+}
+
+.holding-amount {
+    font-family: monospace;
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+.holding-value {
+    color: var(--success-color);
+    margin-left: auto;
+}
+
+.goal-container {
+    margin-top: 10px;
+}
+
+.goal-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.goal-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-color), var(--success-color));
+    transition: width 0.3s ease;
+}
+
+.goal-status {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    text-align: right;
+} 
