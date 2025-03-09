@@ -17,6 +17,7 @@ TRADING_FEE = 0.001  # 0.1% per trade
 # Simulation configuration
 SIMULATION_INTERVAL = 60  # seconds between simulation steps
 COMMUNICATION_INTERVAL = 300  # seconds between trader communications (5 minutes)
+WEBSOCKET_UPDATE_INTERVAL = 1.0  # seconds between WebSocket updates
 
 # Timeframes for analysis
 TIMEFRAMES = {

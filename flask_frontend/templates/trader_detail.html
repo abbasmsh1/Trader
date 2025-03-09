@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Trader Details{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div id="loading" class="text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+    <div id="trader-detail" style="display: none;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/traders">Traders</a></li>
+                <li class="breadcrumb-item active" id="trader-name"></li>
+            </ol>
+        </nav>
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="trader-avatar mb-3"></div>
+                        <h2 id="trader-title" class="mb-3"></h2>
+                        <div class="stats">
+                            <p><strong>Portfolio Value:</strong> <span id="portfolio-value"></span></p>
+                            <p><strong>Available USDT:</strong> <span id="available-usdt"></span></p>
+                            <p><strong>Total Trades:</strong> <span id="total-trades"></span></p>
+                            <p><strong>Success Rate:</strong> <span id="success-rate"></span></p>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <h3>Holdings</h3>
+                        <div id="holdings" class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>Amount</th>
+                                        <th>Value (USDT)</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="holdings-body"></tbody>
+                            </table>
+                        </div>
+                        <h3 class="mt-4">Recent Trades</h3>
+                        <div id="trades" class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Type</th>
+                                        <th>Asset</th>
+                                        <th>Amount</th>
+                                        <th>Price</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="trades-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const traderId = "{{ trader_id }}";
+const traderColors = {
+    'Warren Weber': '#FF6B6B',
+    'Sonia Soros': '#4ECDC4',
+    'Pete the Scalper': '#45B7D1',
+    'Johnny Bollinger': '#96CEB4',
+    'Lena Lynch': '#FFEEAD',
+    'Elon Musk': '#4A90E2',
+    'Jeff Bezos': '#9B59B6',
+    'Warren Buffett': '#2ECC71',
+    'Ray Dalio': '#E67E22'
+};
+
+function getTraderColor(traderName) {
+    return traderColors[traderName] || '#6c757d';
+}
+
+function formatAmount(amount, decimals = 8) {
+    return parseFloat(amount).toFixed(decimals);
+}
+
+function formatUSDT(amount) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(amount);
+}
+
+async function fetchTraderDetail() {
+    try {
+        const response = await fetch(`/api/traders/${traderId}`);
+        if (!response.ok) throw new Error('Failed to fetch trader details');
+        const trader = await response.json();
+        renderTraderDetail(trader);
+    } catch (error) {
+        console.error('Error fetching trader details:', error);
+        document.getElementById('loading').innerHTML = `
+            <div class="alert alert-danger" role="alert">
+                Failed to load trader details. Please try again later.
+            </div>`;
+    }
+}
+
+function renderTraderDetail(trader) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('trader-detail').style.display = 'block';
+    
+    // Update trader info
+    document.getElementById('trader-name').textContent = trader.name;
+    document.getElementById('trader-title').textContent = trader.name;
+    document.getElementById('portfolio-value').textContent = formatUSDT(trader.portfolio_value);
+    document.getElementById('available-usdt').textContent = formatUSDT(trader.available_usdt);
+    document.getElementById('total-trades').textContent = trader.total_trades || 0;
+    document.getElementById('success-rate').textContent = `${((trader.successful_trades / trader.total_trades) * 100 || 0).toFixed(1)}%`;
+    
+    // Set trader avatar color
+    const avatarColor = getTraderColor(trader.name);
+    document.querySelector('.trader-avatar').style.cssText = `
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background-color: ${avatarColor};
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 2em;
+        margin-bottom: 1rem;
+    `;
+    document.querySelector('.trader-avatar').textContent = trader.name[0];
+    
+    // Render holdings
+    const holdingsBody = document.getElementById('holdings-body');
+    holdingsBody.innerHTML = '';
+    Object.entries(trader.holdings).forEach(([asset, amount]) => {
+        if (asset !== 'USDT' && amount > 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${asset}</td>
+                <td>${formatAmount(amount)}</td>
+                <td>${formatUSDT(amount * (trader.current_prices?.[asset] || 0))}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="sellAsset('${asset}', ${amount})">
+                        Sell
+                    </button>
+                </td>
+            `;
+            holdingsBody.appendChild(row);
+        }
+    });
+    
+    // Render trades
+    const tradesBody = document.getElementById('trades-body');
+    tradesBody.innerHTML = '';
+    (trader.recent_trades || []).slice(0, 10).forEach(trade => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${new Date(trade.timestamp).toLocaleString()}</td>
+            <td><span class="badge ${trade.type === 'buy' ? 'bg-success' : 'bg-danger'}">${trade.type}</span></td>
+            <td>${trade.symbol}</td>
+            <td>${formatAmount(trade.amount)}</td>
+            <td>${formatUSDT(trade.price)}</td>
+        `;
+        tradesBody.appendChild(row);
+    });
+}
+
+async function sellAsset(symbol, maxAmount) {
+    const amount = prompt(`Enter amount of ${symbol} to sell (max: ${formatAmount(maxAmount)}):`, maxAmount);
+    if (!amount) return;
+    
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0 || numAmount > maxAmount) {
+        alert('Invalid amount');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/traders/${traderId}/sell`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol,
+                amount: numAmount
+            })
+        });
+        
+        if (!response.ok) throw new Error('Failed to sell asset');
+        
+        const result = await response.json();
+        alert(result.message);
+        fetchTraderDetail();
+    } catch (error) {
+        console.error('Error selling asset:', error);
+        alert('Failed to sell asset. Please try again later.');
+    }
+}
+
+// Initial load
+fetchTraderDetail();
+
+// Refresh every 5 seconds
+setInterval(fetchTraderDetail, 5000);
+</script>
+{% endblock %} 

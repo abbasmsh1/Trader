@@ -3,17 +3,23 @@
 {% block title %}Traders - AI Crypto Trader{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row mb-4">
+<div class="container-fluid py-4">
+    <div class="row mb-4 align-items-center">
         <div class="col">
-            <h1 class="display-4">AI Trader Agents</h1>
+            <h1 class="display-4 fw-light">AI Trader Agents</h1>
             <p class="lead text-muted">Watch our AI traders compete in real-time cryptocurrency markets</p>
+        </div>
+        <div class="col-auto">
+            <button id="resetButton" class="btn btn-ios" onclick="resetSimulation()">
+                <i class="bi bi-arrow-counterclockwise"></i>
+                Reset Simulation
+            </button>
         </div>
     </div>
 
     <div class="row" id="traders-container">
         <div class="text-center w-100">
-            <div class="spinner-border text-primary" role="status">
+            <div class="spinner-ios" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
             <p>Loading trader data...</p>
@@ -24,6 +30,10 @@
 
 {% block extra_js %}
 <script>
+    // Constants
+    const STARTING_CAPITAL = 20;  // Starting capital in USDT
+    const TARGET_CAPITAL = 100;   // Target capital in USDT
+
     // Fetch traders data
     fetchTraders();
 
@@ -32,6 +42,44 @@
         if (data.traders) {
             renderTraders(data.traders);
         }
+    }
+
+    // Reset simulation
+    function resetSimulation() {
+        if (!confirm('Are you sure you want to reset all trader accounts? This cannot be undone.')) {
+            return;
+        }
+
+        fetch('/api/reset', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showToast('Simulation reset successfully');
+                    fetchTraders();
+                } else {
+                    showToast('Failed to reset simulation', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error resetting simulation:', error);
+                showToast('Failed to reset simulation', 'error');
+            });
+    }
+
+    // Show toast notification
+    function showToast(message, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = `toast-ios toast-${type}`;
+        toast.textContent = message;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }, 100);
     }
 
     // Fetch traders data
@@ -43,14 +91,16 @@
             })
             .catch(error => {
                 console.error('Error fetching traders:', error);
-                document.getElementById('traders-container').innerHTML = '<div class="alert alert-danger">Error loading trader data</div>';
+                document.getElementById('traders-container').innerHTML = 
+                    '<div class="alert alert-ios">Error loading trader data</div>';
             });
     }
 
     // Render traders data
     function renderTraders(traders) {
         if (!traders || traders.length === 0) {
-            document.getElementById('traders-container').innerHTML = '<div class="alert alert-info">No trader data available</div>';
+            document.getElementById('traders-container').innerHTML = 
+                '<div class="alert alert-ios">No trader data available</div>';
             return;
         }
 
@@ -69,82 +119,58 @@
             
             html += `
                 <div class="col-md-6 col-xl-4 mb-4">
-                    <div class="card h-100 trader-card" style="border-top: 3px solid ${traderColor}">
-                        <div class="card-header d-flex align-items-center">
-                            <div class="trader-avatar me-3" style="background-color: ${traderColor}">
+                    <div class="card-ios">
+                        <div class="card-header-ios">
+                            <div class="trader-avatar-ios" style="background-color: ${traderColor}">
                                 ${trader.name.charAt(0)}
                             </div>
-                            <div class="flex-grow-1">
-                                <h5 class="card-title mb-0">${trader.name}</h5>
-                                <small class="text-muted">${trader.trading_style}</small>
+                            <div class="trader-info-ios">
+                                <h5>${trader.name}</h5>
+                                <p>${trader.trading_style}</p>
                             </div>
-                            <div class="text-end">
-                                <span class="badge ${trader.active ? 'bg-success' : 'bg-danger'}">
+                            <div class="trader-status-ios">
+                                <span class="badge-ios ${trader.active ? 'active' : 'inactive'}">
                                     ${trader.active ? 'Active' : 'Inactive'}
                                 </span>
                             </div>
                         </div>
                         
-                        <div class="card-body">
-                            <div class="mb-4">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0">Portfolio Value</h6>
-                                    <h4 class="mb-0 ${portfolioValue >= STARTING_CAPITAL ? 'text-success' : 'text-danger'}">
+                        <div class="card-body-ios">
+                            <div class="portfolio-section-ios">
+                                <div class="portfolio-header-ios">
+                                    <h6>Portfolio Value</h6>
+                                    <h4 class="${portfolioValue >= STARTING_CAPITAL ? 'text-success' : 'text-danger'}">
                                         $${portfolioValue.toFixed(2)}
                                     </h4>
                                 </div>
-                                <div class="progress" style="height: 8px;">
-                                    <div class="progress-bar ${progress >= 100 ? 'bg-success' : 'bg-primary'}" 
+                                <div class="progress-ios">
+                                    <div class="progress-bar-ios" 
                                          role="progressbar" 
                                          style="width: ${Math.min(progress, 100)}%"
                                          title="Progress to $${TARGET_CAPITAL} goal">
                                     </div>
                                 </div>
-                                <small class="text-muted">Goal Progress: ${progress.toFixed(1)}%</small>
+                                <small class="progress-text-ios">Goal Progress: ${progress.toFixed(1)}%</small>
                             </div>
 
-                            <div class="mb-4">
-                                <h6 class="mb-3">Holdings</h6>
+                            <div class="holdings-section-ios">
+                                <h6>Holdings</h6>
                                 <div class="table-responsive">
-                                    <table class="table table-dark table-sm align-middle">
-                                        <thead>
-                                            <tr>
-                                                <th>Asset</th>
-                                                <th class="text-end">Amount</th>
-                                                <th class="text-end">Value</th>
-                                                <th class="text-end">Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${renderHoldings(trader)}
-                                        </tbody>
-                                    </table>
+                                    ${renderHoldings(trader)}
                                 </div>
                             </div>
 
-                            <div class="mb-4">
-                                <h6 class="mb-3">Recent Trades</h6>
+                            <div class="trades-section-ios">
+                                <h6>Recent Trades</h6>
                                 <div class="table-responsive">
-                                    <table class="table table-dark table-sm">
-                                        <thead>
-                                            <tr>
-                                                <th>Type</th>
-                                                <th>Asset</th>
-                                                <th class="text-end">Amount</th>
-                                                <th class="text-end">Price</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${renderTrades(trader.trades)}
-                                        </tbody>
-                                    </table>
+                                    ${renderTrades(trader.trades)}
                                 </div>
                             </div>
 
-                            <div class="trader-info">
-                                <h6 class="mb-2">Trader Profile</h6>
-                                <p class="small mb-2"><strong>Personality:</strong> ${trader.personality}</p>
-                                <p class="small mb-0"><strong>Backstory:</strong> ${trader.backstory}</p>
+                            <div class="profile-section-ios">
+                                <h6>Trader Profile</h6>
+                                <p><strong>Personality:</strong> ${trader.personality}</p>
+                                <p class="mb-0"><strong>Backstory:</strong> ${trader.backstory}</p>
                             </div>
                         </div>
                     </div>
@@ -157,17 +183,31 @@
 
     // Render holdings
     function renderHoldings(trader) {
-        let html = '';
+        let html = '<table class="table-ios">';
+        html += `
+            <thead>
+                <tr>
+                    <th>Asset</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end">Value</th>
+                    <th class="text-end">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
+        let hasHoldings = false;
         for (const [symbol, amount] of Object.entries(trader.wallet)) {
             if (amount > 0) {  // Only show non-zero holdings
+                hasHoldings = true;
                 const isUSDT = symbol === 'USDT';
                 const value = isUSDT ? amount : (amount * getCurrentPrice(symbol));
                 
                 html += `
                     <tr>
                         <td>
-                            <div class="d-flex align-items-center">
-                                <i class="bi ${getAssetIcon(symbol)} me-2"></i>
+                            <div class="asset-cell-ios">
+                                <i class="bi ${getAssetIcon(symbol)}"></i>
                                 ${symbol}
                             </div>
                         </td>
@@ -175,7 +215,7 @@
                         <td class="text-end">$${value.toFixed(2)}</td>
                         <td class="text-end">
                             ${!isUSDT ? `
-                                <button class="btn btn-sm btn-outline-danger" 
+                                <button class="btn-ios-small" 
                                         onclick="sellAsset('${trader.id}', '${symbol}', ${amount})"
                                         title="Sell ${symbol}">
                                     <i class="bi bi-currency-exchange"></i>
@@ -186,39 +226,60 @@
                 `;
             }
         }
-        return html || '<tr><td colspan="4" class="text-center">No holdings</td></tr>';
+
+        if (!hasHoldings) {
+            html += '<tr><td colspan="4" class="text-center">No holdings</td></tr>';
+        }
+
+        html += '</tbody></table>';
+        return html;
     }
 
     // Render trades
     function renderTrades(trades) {
+        let html = '<table class="table-ios">';
+        html += `
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Asset</th>
+                    <th class="text-end">Amount</th>
+                    <th class="text-end">Price</th>
+                </tr>
+            </thead>
+            <tbody>
+        `;
+
         if (!trades || trades.length === 0) {
-            return '<tr><td colspan="4" class="text-center">No trades yet</td></tr>';
+            html += '<tr><td colspan="4" class="text-center">No trades yet</td></tr>';
+        } else {
+            const recentTrades = trades.slice(-5).reverse();  // Get last 5 trades in reverse order
+            
+            recentTrades.forEach(trade => {
+                const typeClass = trade.type === 'buy' ? 'success' : 'danger';
+                const typeIcon = trade.type === 'buy' ? 'bi-arrow-down-circle' : 'bi-arrow-up-circle';
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="trade-type-ios ${typeClass}">
+                                <i class="bi ${typeIcon}"></i>
+                                ${trade.type.toUpperCase()}
+                            </div>
+                        </td>
+                        <td>${trade.symbol}</td>
+                        <td class="text-end">${formatAmount(trade.amount_crypto, trade.symbol)}</td>
+                        <td class="text-end">$${trade.price.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
         }
 
-        let html = '';
-        const recentTrades = trades.slice(-5).reverse();  // Get last 5 trades in reverse order
-        
-        recentTrades.forEach(trade => {
-            const typeClass = trade.type === 'buy' ? 'text-success' : 'text-danger';
-            const typeIcon = trade.type === 'buy' ? 'bi-arrow-down-circle' : 'bi-arrow-up-circle';
-            
-            html += `
-                <tr>
-                    <td>
-                        <i class="bi ${typeIcon} ${typeClass} me-1"></i>
-                        <span class="${typeClass}">${trade.type.toUpperCase()}</span>
-                    </td>
-                    <td>${trade.symbol}</td>
-                    <td class="text-end">${formatAmount(trade.amount_crypto, trade.symbol)}</td>
-                    <td class="text-end">$${trade.price.toFixed(2)}</td>
-                </tr>
-            `;
-        });
-        
+        html += '</tbody></table>';
         return html;
     }
 
-    // Helper function to format amounts
+    // Helper functions remain the same
     function formatAmount(amount, symbol) {
         if (symbol === 'USDT') {
             return amount.toFixed(2);
@@ -226,7 +287,6 @@
         return amount.toFixed(8);
     }
 
-    // Helper function to get asset icon
     function getAssetIcon(symbol) {
         const icons = {
             'USDT': 'bi-coin',
@@ -238,7 +298,6 @@
         return icons[symbol] || 'bi-coin';
     }
 
-    // Helper function to calculate portfolio value
     function calculatePortfolioValue(trader) {
         let total = trader.wallet.USDT || 0;
         
@@ -252,7 +311,6 @@
         return total;
     }
 
-    // Helper function to get current price (simulated)
     function getCurrentPrice(symbol) {
         const prices = {
             'BTC': 82750,
@@ -263,7 +321,6 @@
         return prices[symbol] || 0;
     }
 
-    // Helper function to get trader color
     function getTraderColor(traderName) {
         const colors = {
             'Warren Weber': '#4caf50',
@@ -273,7 +330,8 @@
             'Lena Lynch': '#9c27b0',
             'Elon Musk': '#e91e63',
             'Jeff Bezos': '#009688',
-            'Warren Buffett': '#795548'
+            'Warren Buffett': '#795548',
+            'Ray Dalio': '#3f51b5'
         };
         return colors[traderName] || '#3f51b5';
     }
@@ -297,59 +355,259 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                fetchTraders();  // Refresh the data
+                showToast(`Successfully sold ${formatAmount(amount, symbol)} ${symbol}`);
+                fetchTraders();
             } else {
-                alert('Failed to sell asset: ' + data.error);
+                showToast(data.error || 'Failed to sell asset', 'error');
             }
         })
         .catch(error => {
             console.error('Error selling asset:', error);
-            alert('Failed to sell asset. Please try again.');
+            showToast('Failed to sell asset', 'error');
         });
     }
-
-    // Constants
-    const STARTING_CAPITAL = 20;  // Starting capital in USDT
-    const TARGET_CAPITAL = 100;   // Target capital in USDT
 </script>
 
 <style>
-    .trader-card {
-        transition: transform 0.2s ease-in-out;
+    /* iOS-style design system */
+    :root {
+        --ios-background: #000000;
+        --ios-card-bg: #1c1c1e;
+        --ios-border: #2c2c2e;
+        --ios-text: #ffffff;
+        --ios-text-secondary: #8e8e93;
+        --ios-blue: #0a84ff;
+        --ios-green: #30d158;
+        --ios-red: #ff453a;
+        --ios-yellow: #ffd60a;
+        --ios-purple: #bf5af2;
+        --ios-radius: 12px;
+        --ios-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
     }
-    
-    .trader-card:hover {
-        transform: translateY(-5px);
+
+    body {
+        background-color: var(--ios-background);
+        color: var(--ios-text);
     }
-    
-    .trader-avatar {
+
+    .btn-ios {
+        background: var(--ios-blue);
+        border: none;
+        border-radius: 20px;
+        color: white;
+        padding: 10px 20px;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-ios:hover {
+        background: #0071e3;
+        transform: translateY(-1px);
+    }
+
+    .btn-ios-small {
+        background: var(--ios-border);
+        border: none;
+        border-radius: 16px;
+        color: var(--ios-text);
+        padding: 4px 12px;
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+
+    .btn-ios-small:hover {
+        background: #3c3c3e;
+    }
+
+    .card-ios {
+        background: var(--ios-card-bg);
+        border-radius: var(--ios-radius);
+        border: 1px solid var(--ios-border);
+        overflow: hidden;
+        transition: transform 0.2s;
+    }
+
+    .card-ios:hover {
+        transform: translateY(-2px);
+    }
+
+    .card-header-ios {
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        border-bottom: 1px solid var(--ios-border);
+    }
+
+    .trader-avatar-ios {
         width: 48px;
         height: 48px;
-        border-radius: 50%;
+        border-radius: 24px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-size: 24px;
         color: white;
         font-weight: bold;
+        margin-right: 16px;
     }
-    
-    .table-dark {
-        background-color: transparent;
+
+    .trader-info-ios {
+        flex: 1;
+    }
+
+    .trader-info-ios h5 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .trader-info-ios p {
+        margin: 4px 0 0;
+        font-size: 14px;
+        color: var(--ios-text-secondary);
+    }
+
+    .badge-ios {
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .badge-ios.active {
+        background: var(--ios-green);
+        color: #000;
+    }
+
+    .badge-ios.inactive {
+        background: var(--ios-red);
+        color: #000;
+    }
+
+    .card-body-ios {
+        padding: 16px;
+    }
+
+    .portfolio-section-ios {
+        margin-bottom: 24px;
+    }
+
+    .portfolio-header-ios {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .progress-ios {
+        height: 8px;
+        background: var(--ios-border);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 8px;
+    }
+
+    .progress-bar-ios {
+        height: 100%;
+        background: var(--ios-blue);
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+
+    .progress-text-ios {
+        color: var(--ios-text-secondary);
+        font-size: 12px;
+    }
+
+    .table-ios {
+        width: 100%;
         margin-bottom: 0;
     }
-    
-    .table-dark td, .table-dark th {
-        border-color: #2d2d2d;
+
+    .table-ios th {
+        color: var(--ios-text-secondary);
+        font-weight: 500;
+        border-bottom: 1px solid var(--ios-border);
+        padding: 8px;
     }
-    
-    .progress {
-        background-color: #2d2d2d;
+
+    .table-ios td {
+        padding: 12px 8px;
+        border-bottom: 1px solid var(--ios-border);
     }
-    
-    .trader-info {
-        border-top: 1px solid #2d2d2d;
-        padding-top: 1rem;
+
+    .asset-cell-ios {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .trade-type-ios {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 8px;
+        font-size: 12px;
+    }
+
+    .trade-type-ios.success {
+        background: rgba(48, 209, 88, 0.1);
+        color: var(--ios-green);
+    }
+
+    .trade-type-ios.danger {
+        background: rgba(255, 69, 58, 0.1);
+        color: var(--ios-red);
+    }
+
+    .spinner-ios {
+        width: 36px;
+        height: 36px;
+        border: 3px solid var(--ios-border);
+        border-top-color: var(--ios-blue);
+        border-radius: 50%;
+        animation: spinner 1s linear infinite;
+    }
+
+    .toast-ios {
+        position: fixed;
+        bottom: 24px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100px);
+        background: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 12px 24px;
+        border-radius: 20px;
+        font-weight: 500;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        z-index: 1000;
+        transition: transform 0.3s ease;
+    }
+
+    .toast-ios.show {
+        transform: translateX(-50%) translateY(0);
+    }
+
+    .toast-ios.toast-error {
+        background: rgba(255, 69, 58, 0.9);
+    }
+
+    @keyframes spinner {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+
+    @media (prefers-color-scheme: light) {
+        :root {
+            --ios-background: #f2f2f7;
+            --ios-card-bg: #ffffff;
+            --ios-border: #e5e5ea;
+            --ios-text: #000000;
+            --ios-text-secondary: #6e6e73;
+        }
     }
 </style>
 {% endblock %} 

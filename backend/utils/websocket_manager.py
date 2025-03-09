@@ -1,6 +1,7 @@
 from fastapi import WebSocket
 from typing import List, Dict, Any
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ class WebSocketManager:
             websocket: The WebSocket connection to remove
         """
         self.active_connections.remove(websocket)
-        logger.info(f"WebSocket disconnected. Remaining connections: {len(self.active_connections)}")
+        logger.info(f"WebSocket disconnected. Total connections: {len(self.active_connections)}")
     
     async def send_personal_message(self, message: str, websocket: WebSocket):
         """
@@ -45,24 +46,27 @@ class WebSocketManager:
         """
         await websocket.send_text(message)
     
-    async def broadcast(self, message: str):
-        """
-        Broadcast a message to all active WebSocket connections.
-        
-        Args:
-            message: The message to broadcast
-        """
-        disconnected = []
+    async def broadcast(self, data):
+        """Broadcast data to all connected clients."""
+        if not self.active_connections:
+            return
+            
+        # Convert data to JSON string if it's not already a string
+        if not isinstance(data, str):
+            try:
+                data = json.dumps(data)
+            except Exception as e:
+                logger.error(f"Error converting data to JSON: {e}")
+                return
+
+        # Send to all active connections
         for connection in self.active_connections:
             try:
-                await connection.send_text(message)
+                await connection.send_text(data)
             except Exception as e:
                 logger.error(f"Error sending message to WebSocket: {e}")
-                disconnected.append(connection)
-        
-        # Clean up any disconnected connections
-        for connection in disconnected:
-            try:
-                self.active_connections.remove(connection)
-            except ValueError:
-                pass 
+                # Remove failed connection
+                try:
+                    self.active_connections.remove(connection)
+                except ValueError:
+                    pass 

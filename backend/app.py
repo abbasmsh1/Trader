@@ -1,12 +1,14 @@
 import asyncio
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import logging
 from datetime import datetime
 import os
 import sys
+from typing import Dict, Any
+from pydantic import BaseModel
 
 # Add the parent directory to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -15,6 +17,7 @@ from backend.api.binance_api import BinanceAPI
 from backend.models.simulation import Simulation
 from backend.models.market import Market
 from backend.utils.websocket_manager import WebSocketManager
+from backend.config import WEBSOCKET_UPDATE_INTERVAL
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +48,9 @@ binance_api = BinanceAPI()
 market = Market(binance_api)
 simulation = Simulation(market)
 
+class SellRequest(BaseModel):
+    symbol: str
+    amount: float
 
 @app.on_event("startup")
 async def startup_event():
@@ -84,7 +90,7 @@ async def get_trader(trader_id: str):
     trader_info = simulation.get_trader_info(trader_id)
     if trader_info:
         return trader_info
-    return {"error": f"Trader with ID {trader_id} not found"}
+    raise HTTPException(status_code=404, detail=f"Trader with ID {trader_id} not found")
 
 
 @app.get("/market")
@@ -99,7 +105,7 @@ async def get_pair_data(trading_pair: str):
     data = market.get_pair_data(trading_pair)
     if data:
         return {"market_data": data}
-    return {"error": f"Trading pair {trading_pair} not found"}
+    raise HTTPException(status_code=404, detail=f"Trading pair {trading_pair} not found")
 
 
 @app.get("/communications")
@@ -108,14 +114,57 @@ async def get_communications():
     return {"communications": simulation.get_recent_communications()}
 
 
+@app.post("/traders/{trader_id}/sell")
+async def sell_asset(trader_id: str, request: SellRequest):
+    """Sell an asset for a specific trader."""
+    trader = None
+    for t in simulation.traders:
+        if t.id == trader_id:
+            trader = t
+            break
+    
+    if not trader:
+        raise HTTPException(status_code=404, detail=f"Trader with ID {trader_id} not found")
+    
+    # Get current market data
+    market_data = market.get_current_data()
+    symbol_pair = f"{request.symbol}USDT"
+    
+    if symbol_pair not in market_data:
+        raise HTTPException(status_code=400, detail=f"Trading pair {symbol_pair} not found")
+    
+    current_price = market_data[symbol_pair]['price']
+    
+    # Execute the sell
+    success = trader.sell(request.symbol, request.amount, current_price)
+    
+    if success:
+        return {"success": True, "message": f"Successfully sold {request.amount} {request.symbol}"}
+    else:
+        raise HTTPException(status_code=400, detail="Failed to sell asset")
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
     await websocket_manager.connect(websocket)
     try:
         while True:
-            # Keep the connection alive
-            await websocket.receive_text()
+            # Get current data
+            market_data = market.get_current_data()
+            traders_info = simulation.get_traders_info()
+            communications = simulation.get_recent_communications()
+            
+            # Send update
+            await websocket_manager.broadcast({
+                "market": market_data,
+                "traders": traders_info,
+                "communications": communications
+            })
+            
+            # Wait before next update
+            await asyncio.sleep(WEBSOCKET_UPDATE_INTERVAL)
+    
     except WebSocketDisconnect:
         websocket_manager.disconnect(websocket)
 
@@ -136,6 +185,24 @@ async def broadcast_updates():
         
         # Wait before sending the next update
         await asyncio.sleep(1)
+
+
+@app.post("/reset")
+async def reset_simulation():
+    """Reset all trader accounts and restart the simulation."""
+    global simulation, market
+    
+    # Stop the current simulation
+    await simulation.stop()
+    
+    # Reinitialize market and simulation
+    market = Market(binance_api)
+    simulation = Simulation(market)
+    
+    # Start the new simulation
+    asyncio.create_task(simulation.run())
+    
+    return {"success": True, "message": "Simulation reset successfully"}
 
 
 if __name__ == "__main__":
