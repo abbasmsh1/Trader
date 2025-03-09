@@ -271,9 +271,14 @@ class BaseAgent(ABC):
         max_trade_amount = self.wallet.balance_usdt * self.risk_tolerance
         trade_amount = max_trade_amount * confidence
         
-        # Minimum trade amount of 5 USDT
-        if trade_amount < 5.0:
-            trade_amount = 5.0
+        # Minimum trade amount of $3 USDT
+        if trade_amount < 3.0:
+            # Only proceed if we have enough balance
+            if self.wallet.balance_usdt >= 3.0:
+                trade_amount = 3.0
+            else:
+                print(f"Skipping trade for {symbol}: insufficient balance for minimum $3.00 trade")
+                return False
             
         if action in ['STRONG_BUY', 'BUY', 'SCALE_IN']:
             # Buy with available funds
@@ -283,6 +288,17 @@ class BaseAgent(ABC):
             # Sell a portion of holdings based on confidence
             position_size = self.wallet.get_position_size(symbol)
             sell_amount = position_size * confidence
+            
+            # Check if sell value is at least $3
+            sell_value = sell_amount * current_price
+            if sell_value < 3.0:
+                # Try to sell more to meet minimum
+                if position_size * current_price >= 3.0:
+                    sell_amount = 3.0 / current_price
+                else:
+                    print(f"Skipping sell for {symbol}: value ${sell_value:.2f} is below minimum $3.00")
+                    return False
+                    
             return self.wallet.execute_sell(symbol, sell_amount, current_price)
             
         return False  # No trade for WATCH or HOLD

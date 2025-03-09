@@ -1,33 +1,43 @@
 /* Variables */
 :root {
-    --primary-color: #2196f3;
-    --secondary-color: #03a9f4;
-    --background-color: #1a1a1a;
-    --card-background: #242424;
-    --text-color: #ffffff;
-    --text-secondary: #b3b3b3;
-    --border-color: #333333;
-    --success-color: #4caf50;
-    --warning-color: #ff9800;
-    --danger-color: #f44336;
+    /* Dark Mode Theme */
+    --primary-color: #4f46e5;
+    --primary-hover: #6366f1;
+    --secondary-color: #0ea5e9;
+    --background-color: #0f172a;
+    --card-background: #1e293b;
+    --card-hover: #334155;
+    --text-color: #f8fafc;
+    --text-secondary: #94a3b8;
+    --border-color: #334155;
+    --success-color: #10b981;
+    --warning-color: #f59e0b;
+    --danger-color: #ef4444;
+    --neutral-color: #6b7280;
+    
+    /* UI Elements */
     --chart-height: 400px;
     --transition-speed: 0.3s;
+    --border-radius: 0.5rem;
+    --box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --box-shadow-hover: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 /* Base styles */
 body {
     background-color: var(--background-color);
     color: var(--text-color);
-    font-family: 'Roboto', sans-serif;
+    font-family: 'Inter', 'Roboto', sans-serif;
     margin: 0;
     padding: 0;
+    line-height: 1.5;
 }
 
 /* Header styles */
 .header {
-    background: linear-gradient(135deg, #1a237e, #0d47a1);
+    background: linear-gradient(135deg, #4338ca, #3730a3);
     padding: 1.5rem;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    box-shadow: var(--box-shadow);
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -374,6 +384,7 @@ body {
     border-radius: var(--border-radius);
     margin: 1rem;
     overflow: hidden;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 .signals-table-content {
@@ -389,12 +400,57 @@ body {
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.signals-table-content th {
+    background-color: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+}
+
+.signal-row {
+    transition: background-color 0.2s ease;
+    position: relative;
+}
+
+.signal-row:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+    cursor: help;
+}
+
+.signal-row:hover .signal-reason {
+    display: block !important;
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 0.9rem;
+    max-width: 300px;
+    z-index: 1000;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+}
+
+.signal-reason {
+    display: none;
+}
+
 .trade-status-executed {
     color: var(--success-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .trade-status-pending {
     color: var(--warning-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 /* Agent Discussions */
@@ -619,14 +675,29 @@ body {
 /* Signal Styles */
 .signal-buy, .signal-strong_buy, .signal-scale_in {
     color: var(--success-color);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: rgba(0, 255, 0, 0.1);
+    display: inline-block;
 }
 
 .signal-sell, .signal-strong_sell, .signal-scale_out {
     color: var(--danger-color);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 0, 0, 0.1);
+    display: inline-block;
 }
 
 .signal-hold, .signal-watch {
     color: var(--warning-color);
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background-color: rgba(255, 165, 0, 0.1);
+    display: inline-block;
 }
 
 .confidence-container {
@@ -636,9 +707,9 @@ body {
 }
 
 .confidence-bar {
-    height: 4px;
+    height: 6px;
     background: var(--primary-color);
-    border-radius: 2px;
+    border-radius: 3px;
     transition: width var(--transition-speed);
 }
 
@@ -1681,4 +1752,19 @@ body {
 .nav-button:hover::after,
 .nav-button.active::after {
     transform: scaleX(1);
+}
+
+.signals-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 4px 4px 0 0;
+    margin-bottom: 0.5rem;
+}
+
+.signals-count {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
 } 

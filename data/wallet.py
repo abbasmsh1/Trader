@@ -143,9 +143,14 @@ class Wallet:
             else:  # SCALE_IN
                 amount_usdt = self.balance_usdt * 0.2 * confidence  # Use up to 20% of balance for scaling in
                 
-            # Ensure minimum trade size
-            amount_usdt = max(amount_usdt, 1.0) if self.balance_usdt >= 5.0 else self.balance_usdt * 0.2
+            # Ensure minimum trade size of $3
+            amount_usdt = max(amount_usdt, 3.0) if self.balance_usdt >= 10.0 else self.balance_usdt * 0.3
             
+            # Skip if amount is too small
+            if amount_usdt < 3.0:
+                print(f"Skipping buy for {symbol}: amount ${amount_usdt:.2f} is below minimum $3.00")
+                return False
+                
             # Execute buy
             return self.execute_buy(symbol, amount_usdt, current_price)
             
@@ -177,6 +182,14 @@ class Wallet:
             
             # Check if the amount is too small (dust)
             if amount_crypto <= 1e-8:
+                return False
+                
+            # Calculate USDT value of the sell
+            sell_value_usdt = amount_crypto * current_price
+            
+            # Skip if sell value is too small
+            if sell_value_usdt < 3.0:
+                print(f"Skipping sell for {holding_symbol}: amount ${sell_value_usdt:.2f} is below minimum $3.00")
                 return False
                 
             # Execute sell with the correct symbol

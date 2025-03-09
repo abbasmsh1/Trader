@@ -25,7 +25,7 @@ SYSTEM_PARAMS = {
     'record_interval': 60,  # Holdings record interval in seconds (1 minute)
     'max_history': 1000,    # Maximum number of signals to keep in history
     'max_holdings_history': 1000,  # Maximum number of holdings records to keep
-    'min_trade_amount_usdt': 1.0,  # Minimum trade amount in USDT
+    'min_trade_amount_usdt': 3.0,  # Minimum trade amount in USDT (increased to $3)
     'min_trade_amount_crypto': 0.0001  # Minimum trade amount in crypto
 }
 
@@ -619,6 +619,14 @@ class TradingSystem:
                     initial_usdt = agent['wallet'].balance_usdt
                     purchase_amount = initial_usdt * 0.8  # Use 80% of initial balance
                     
+                    # Ensure minimum purchase amount of $3
+                    purchase_amount = max(purchase_amount, 3.0)
+                    
+                    # Skip if not enough balance
+                    if purchase_amount > agent['wallet'].balance_usdt:
+                        print(f"❌ {agent['name']} has insufficient balance for initial BTC purchase")
+                        continue
+                    
                     success = agent['wallet'].execute_buy("BTC/USDT", purchase_amount, btc_price)
                     if success:
                         btc_amount = purchase_amount / btc_price
@@ -654,24 +662,92 @@ class TradingSystem:
     def _set_aggressive_strategies(self):
         """Set more aggressive trading strategies for all agents to reach $100 goal faster."""
         for agent in self.agents:
-            # Update strategy preferences to be more aggressive
+            # Update strategy preferences to be more aggressive and responsive
             agent['strategy'] = {
                 'value_investing': 0.3,
                 'momentum_trading': 0.8,
                 'trend_following': 0.9,
                 'swing_trading': 0.7,
-                'scalping': 0.6
+                'scalping': 0.6,
+                'mean_reversion': 0.7  # Added for better responsiveness to market conditions
             }
             
-            # Update market beliefs to be more optimistic
-            agent['market_view'] = {
-                'market_trend': 'strongly_bullish',
-                'volatility_expectation': 'high',
-                'risk_assessment': 'opportunity'
-            }
+            # Get current market data for BTC to determine overall market sentiment
+            btc_data = self.get_market_data("BTC/USDT")
+            if not btc_data.empty:
+                # Calculate basic indicators
+                rsi = self.calculate_rsi(btc_data['close'])
+                sma20 = btc_data['close'].rolling(window=20).mean().iloc[-1]
+                sma50 = btc_data['close'].rolling(window=50).mean().iloc[-1]
+                
+                # Determine market trend based on indicators
+                if rsi > 60 and sma20 > sma50:
+                    # Bullish market
+                    agent['market_view'] = {
+                        'market_trend': 'bullish',
+                        'volatility_expectation': 'high',
+                        'risk_assessment': 'opportunity'
+                    }
+                elif rsi < 40 and sma20 < sma50:
+                    # Bearish market
+                    agent['market_view'] = {
+                        'market_trend': 'bearish',
+                        'volatility_expectation': 'high',
+                        'risk_assessment': 'cautious'
+                    }
+                else:
+                    # Neutral market
+                    agent['market_view'] = {
+                        'market_trend': 'neutral',
+                        'volatility_expectation': 'moderate',
+                        'risk_assessment': 'balanced'
+                    }
+            else:
+                # Default to balanced view if no data
+                agent['market_view'] = {
+                    'market_trend': 'neutral',
+                    'volatility_expectation': 'moderate',
+                    'risk_assessment': 'balanced'
+                }
             
-            print(f"Set aggressive trading strategy for {agent['name']}")
-        
+            # Adjust risk tolerance based on current holdings
+            wallet_metrics = agent['wallet'].get_performance_metrics({})
+            total_value = wallet_metrics['total_value_usdt']
+            
+            if total_value < 30:
+                # More aggressive for smaller portfolios
+                agent['risk_tolerance'] = min(0.8, agent['risk_tolerance'] * 1.5)
+            elif total_value > 70:
+                # More conservative for larger portfolios
+                agent['risk_tolerance'] = max(0.3, agent['risk_tolerance'] * 0.8)
+                
+            print(f"Set aggressive strategy for {agent['name']}: {agent['market_view']['market_trend']} outlook, {agent['risk_tolerance']:.2f} risk tolerance")
+    
+    def calculate_rsi(self, prices, period=14):
+        """Calculate Relative Strength Index."""
+        try:
+            # Calculate price changes
+            delta = prices.diff()
+            
+            # Separate gains and losses
+            gain = delta.where(delta > 0, 0)
+            loss = -delta.where(delta < 0, 0)
+            
+            # Calculate average gain and loss
+            avg_gain = gain.rolling(window=period).mean()
+            avg_loss = loss.rolling(window=period).mean()
+            
+            # Calculate RS
+            rs = avg_gain / avg_loss
+            
+            # Calculate RSI
+            rsi = 100 - (100 / (1 + rs))
+            
+            return rsi.iloc[-1]
+        except Exception as e:
+            print(f"Error calculating RSI: {str(e)}")
+            return 50  # Return neutral RSI on error
+    
     def get_market_data(self, symbol: str) -> pd.DataFrame:
         """Get market data for a symbol, using cache if available."""
         try:
@@ -1095,26 +1171,73 @@ class TradingSystem:
                                 'momentum_trading': 1.0,  # Max momentum trading
                                 'trend_following': 1.0,   # Max trend following
                                 'swing_trading': 0.9,     # High swing trading
-                                'scalping': 1.0          # Max scalping
+                                'scalping': 1.0,          # Max scalping
+                                'mean_reversion': 0.8     # High mean reversion for quick profits
                             }
                             
-                            # Update market beliefs to be very optimistic
-                            agent['market_view'] = {
-                                'market_trend': 'extremely_bullish',
-                                'volatility_expectation': 'very_high',
-                                'risk_assessment': 'high_reward'
-                            }
+                            # Update market beliefs to be responsive to market conditions
+                            if analysis['sentiment'] == 'bullish' or analysis['sentiment'] == 'oversold':
+                                agent['market_view'] = {
+                                    'market_trend': 'bullish',
+                                    'volatility_expectation': 'very_high',
+                                    'risk_assessment': 'high_reward'
+                                }
+                            elif analysis['sentiment'] == 'bearish' or analysis['sentiment'] == 'overbought':
+                                agent['market_view'] = {
+                                    'market_trend': 'bearish',
+                                    'volatility_expectation': 'very_high',
+                                    'risk_assessment': 'capital_preservation'
+                                }
+                            else:
+                                agent['market_view'] = {
+                                    'market_trend': 'neutral',
+                                    'volatility_expectation': 'high',
+                                    'risk_assessment': 'balanced'
+                                }
                             
-                            # Boost confidence for buy signals significantly
+                            # Boost confidence for all signals
+                            signal['confidence'] = min(0.95, signal['confidence'] * 1.8)
+                            
+                            # For buy signals
                             if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
-                                signal['confidence'] = min(0.95, signal['confidence'] * 2)
-                                signal['reason'] += " (Aggressive mode: under $30)"
+                                if analysis['sentiment'] == 'bullish' or analysis['sentiment'] == 'oversold':
+                                    signal['confidence'] = min(0.95, signal['confidence'] * 1.2)
+                                    signal['reason'] += " (Aggressive mode: under $30, favorable buy conditions)"
+                                else:
+                                    # Still buy but with slightly reduced confidence if not ideal conditions
+                                    signal['confidence'] = min(0.9, signal['confidence'])
+                                    signal['reason'] += " (Aggressive mode: under $30, cautious buy)"
                             
-                            # Convert WATCH or HOLD to SCALE_IN if conditions are favorable
-                            if signal['action'] in ['WATCH', 'HOLD'] and analysis['sentiment'] != 'bearish':
-                                signal['action'] = 'SCALE_IN'
-                                signal['confidence'] = 0.7
-                                signal['reason'] = "Converting to buy due to aggressive strategy (under $30)"
+                            # For sell signals
+                            elif signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+                                if analysis['sentiment'] == 'bearish' or analysis['sentiment'] == 'overbought':
+                                    signal['confidence'] = min(0.95, signal['confidence'] * 1.2)
+                                    signal['reason'] += " (Aggressive mode: under $30, favorable sell conditions)"
+                                else:
+                                    # Still sell but with slightly reduced confidence if not ideal conditions
+                                    signal['confidence'] = min(0.9, signal['confidence'])
+                                    signal['reason'] += " (Aggressive mode: under $30, taking profits)"
+                            
+                            # Convert WATCH or HOLD to action based on market conditions
+                            elif signal['action'] in ['WATCH', 'HOLD']:
+                                if analysis['sentiment'] == 'bullish' or analysis['sentiment'] == 'oversold':
+                                    signal['action'] = 'SCALE_IN'
+                                    signal['confidence'] = 0.7
+                                    signal['reason'] = "Converting to buy due to aggressive strategy (under $30, bullish conditions)"
+                                elif analysis['sentiment'] == 'bearish' or analysis['sentiment'] == 'overbought':
+                                    signal['action'] = 'SCALE_OUT'
+                                    signal['confidence'] = 0.7
+                                    signal['reason'] = "Converting to sell due to aggressive strategy (under $30, bearish conditions)"
+                                else:
+                                    # In neutral conditions, slightly favor buying for growth
+                                    if analysis['indicators']['rsi'] < 50:
+                                        signal['action'] = 'SCALE_IN'
+                                        signal['confidence'] = 0.6
+                                        signal['reason'] = "Converting to light buy due to aggressive strategy (under $30, neutral conditions)"
+                                    else:
+                                        signal['action'] = 'SCALE_OUT'
+                                        signal['confidence'] = 0.6
+                                        signal['reason'] = "Converting to light sell due to aggressive strategy (under $30, neutral conditions)"
                         
                         elif total_value < 40:  # Between $30-$40, be aggressive
                             # Still aggressive but slightly less
@@ -1198,8 +1321,12 @@ class TradingSystem:
                                 # Fallback to direct buy/sell if execute_trade fails
                                 if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
                                     amount_usdt = agent['wallet'].balance_usdt * 0.3 * signal['confidence']
-                                    if amount_usdt > 1.0:
+                                    # Ensure minimum trade size of $3
+                                    amount_usdt = max(amount_usdt, 3.0) if agent['wallet'].balance_usdt >= 10.0 else agent['wallet'].balance_usdt * 0.3
+                                    if amount_usdt >= 3.0:
                                         trade_executed = agent['wallet'].execute_buy(symbol, amount_usdt, current_price)
+                                    else:
+                                        print(f"Skipping fallback buy for {symbol}: amount ${amount_usdt:.2f} is below minimum $3.00")
                                 elif signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
                                     # Handle different symbol formats
                                     base_symbol = symbol.split('/')[0] if '/' in symbol else symbol
@@ -1213,14 +1340,25 @@ class TradingSystem:
                                     
                                     if holding_symbol:
                                         amount_crypto = agent['wallet'].holdings[holding_symbol] * 0.5 * signal['confidence']
-                                        if amount_crypto > 0:
+                                        # Calculate USDT value of the sell
+                                        sell_value_usdt = amount_crypto * current_price
+                                        if sell_value_usdt >= 3.0:
                                             trade_executed = agent['wallet'].execute_sell(holding_symbol, amount_crypto, current_price)
+                                        else:
+                                            # Try to sell more to meet minimum
+                                            total_value = agent['wallet'].holdings[holding_symbol] * current_price
+                                            if total_value >= 3.0:
+                                                amount_crypto = 3.0 / current_price
+                                                trade_executed = agent['wallet'].execute_sell(holding_symbol, amount_crypto, current_price)
+                                            else:
+                                                print(f"Skipping fallback sell for {holding_symbol}: value ${sell_value_usdt:.2f} is below minimum $3.00")
                         
                         # Update wallet metrics after trade
                         wallet_metrics = agent['wallet'].get_performance_metrics(current_prices)
                         personality_traits = self.get_personality_traits(agent['personality'])
                         
-                        signals.append({
+                        # Create signal data
+                        signal_data = {
                             'agent': agent['name'],
                             'personality': personality_traits['personality'],
                             'symbol': symbol,
@@ -1233,7 +1371,18 @@ class TradingSystem:
                             'timestamp': datetime.now().timestamp(),
                             'goal': agent.get('goal', 'usd'),
                             'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"  # Progress toward $100
-                        })
+                        }
+                        
+                        # Add to signals list
+                        signals.append(signal_data)
+                        
+                        # Add to signals history
+                        self.signals_history.append(signal_data)
+                        
+                        # Limit signals history size
+                        if len(self.signals_history) > SYSTEM_PARAMS['max_history']:
+                            self.signals_history = self.signals_history[-SYSTEM_PARAMS['max_history']:]
+                        
                         print(f"Signal generated by {agent['name']} for {symbol}: {signal['action']}")
                     except Exception as e:
                         print(f"Error with agent {agent['name']} for {symbol}: {str(e)}")
@@ -1770,8 +1919,12 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                             options=[
                                 {'label': 'All Signals', 'value': 'all'},
                                 {'label': 'Buy Signals', 'value': 'buy'},
+                                {'label': 'Strong Buy', 'value': 'strong_buy'},
+                                {'label': 'Scale In', 'value': 'scale_in'},
                                 {'label': 'Sell Signals', 'value': 'sell'},
-                                {'label': 'Hold Signals', 'value': 'hold'}
+                                {'label': 'Strong Sell', 'value': 'strong_sell'},
+                                {'label': 'Scale Out', 'value': 'scale_out'},
+                                {'label': 'Hold/Watch', 'value': 'hold'}
                             ],
                             value='all',
                             className='signal-filter'
@@ -1952,18 +2105,33 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
             ])
             
             # Create signals table with filtering
-            recent_signals = trading_system.signals_history[-10:]  # Get last 10 signals
+            recent_signals = trading_system.signals_history[-100:]  # Get last 100 signals
             
             # Apply filter
             if signal_filter != 'all':
                 if signal_filter == 'buy':
-                    recent_signals = [s for s in recent_signals if 'BUY' in s['signal']['action']]
+                    recent_signals = [s for s in recent_signals if any(action in s['signal']['action'].upper() for action in ['BUY', 'STRONG_BUY', 'SCALE_IN'])]
+                elif signal_filter == 'strong_buy':
+                    recent_signals = [s for s in recent_signals if 'STRONG_BUY' in s['signal']['action'].upper()]
+                elif signal_filter == 'scale_in':
+                    recent_signals = [s for s in recent_signals if 'SCALE_IN' in s['signal']['action'].upper()]
                 elif signal_filter == 'sell':
-                    recent_signals = [s for s in recent_signals if 'SELL' in s['signal']['action']]
+                    recent_signals = [s for s in recent_signals if any(action in s['signal']['action'].upper() for action in ['SELL', 'STRONG_SELL', 'SCALE_OUT'])]
+                elif signal_filter == 'strong_sell':
+                    recent_signals = [s for s in recent_signals if 'STRONG_SELL' in s['signal']['action'].upper()]
+                elif signal_filter == 'scale_out':
+                    recent_signals = [s for s in recent_signals if 'SCALE_OUT' in s['signal']['action'].upper()]
                 elif signal_filter == 'hold':
-                    recent_signals = [s for s in recent_signals if 'HOLD' in s['signal']['action']]
+                    recent_signals = [s for s in recent_signals if any(action in s['signal']['action'].upper() for action in ['HOLD', 'WATCH'])]
             
+            # Sort signals by timestamp (newest first)
+            recent_signals = sorted(recent_signals, key=lambda x: x['timestamp'], reverse=True)
+            
+            # Create signals table
             signals_table = html.Div([
+                html.Div([
+                    html.Span(f"Showing {len(recent_signals)} signals", className="signals-count"),
+                ], className="signals-info"),
                 html.Table([
                     html.Thead(html.Tr([
                         html.Th("Time"),
@@ -1978,10 +2146,18 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                             html.Td(datetime.fromtimestamp(signal['timestamp']).strftime('%H:%M:%S')),
                             html.Td(signal['agent']),
                             html.Td(signal['symbol']),
-                            html.Td(
-                                signal['signal']['action'],
-                                className=f"signal-{signal['signal']['action'].lower()}"
-                            ),
+                            html.Td([
+                                html.Div(
+                                    signal['signal']['action'],
+                                    className=f"signal-{signal['signal']['action'].lower()}",
+                                    title=signal['signal'].get('reason', 'No reason provided')
+                                ),
+                                html.Div(
+                                    signal['signal'].get('reason', ''),
+                                    className='signal-reason',
+                                    style={'display': 'none'}
+                                )
+                            ]),
                             html.Td(
                                 html.Div([
                                     html.Div(
@@ -1999,10 +2175,11 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                                     )
                                 ], className=f"trade-status-{'executed' if signal.get('trade_executed', False) else 'pending'}")
                             )
-                        ], className='signal-row') for signal in reversed(recent_signals)
+                        ], className='signal-row', title=signal['signal'].get('reason', 'No reason provided'))
+                        for signal in recent_signals
                     ])
                 ], className='signals-table-content')
-            ])
+            ], className='signals-table-container')
             
             return charts, market_overview, signals_table
             
