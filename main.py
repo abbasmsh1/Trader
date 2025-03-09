@@ -342,6 +342,7 @@ class TradingSystem:
         # Thread safety
         self.lock = Lock()
         
+<<<<<<< HEAD
         # Load previous state if available
         self._load_state()
         
@@ -538,12 +539,21 @@ class TradingSystem:
                 'sentiment': 'balanced'
             }
     
+=======
+        # Initialize wallets
+        for agent in self.agents:
+            agent.wallet = Wallet(initial_balance_usdt=20.0)
+            agent.wallet.holdings = {}
+            agent.wallet.trades_history = []
+        
+        self.discussions = []  # Store agent discussions
+        
+        # Load saved state if available
+        self._load_state()
+        
+>>>>>>> 59355cecc9b582561f2aaf98fa89d36d9d48ea41
     def _load_state(self):
         """Load saved state from disk if available."""
-        # Force reset on startup
-        self._reset_agents()
-        self._state_loaded = True
-        print("Forced reset of trading system on startup")
         try:
             state_file = os.path.join(os.path.dirname(__file__), 'data', 'trading_state.pkl')
             if os.path.exists(state_file):
@@ -2620,12 +2630,14 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
     
     return app
 
+def run_dashboard(trading_system):
+    """Run the spot trading dashboard."""
+    app = create_dashboard(trading_system)
+    app.run_server(debug=False, host='0.0.0.0', port=8050)
+
 if __name__ == '__main__':
     # Create trading system instance
     trading_system = TradingSystem()
-    
-    # Initialize the system
-    trading_system._load_state()  # Load previous state if available
     
     # Start the trading system in a background thread
     trading_thread = Thread(target=trading_system.run)
@@ -2633,5 +2645,9 @@ if __name__ == '__main__':
     trading_thread.start()
     
     # Create and run the dashboard
+<<<<<<< HEAD
     app = create_dashboard(trading_system)
     app.run_server(host='0.0.0.0', port=8050, debug=False) 
+=======
+    run_dashboard(trading_system) 
+>>>>>>> 59355cecc9b582561f2aaf98fa89d36d9d48ea41

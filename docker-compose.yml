@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  trader:
+    build: .
+    ports:
+      - "8050:8050"  # Spot trading dashboard
+      - "8051:8051"  # Futures trading dashboard
+    volumes:
+      - ./data:/app/data  # Persist trading data
+    environment:
+      - PYTHONUNBUFFERED=1  # Enable real-time logging
+    restart: unless-stopped  # Automatically restart on failure 
