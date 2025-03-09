@@ -6,7 +6,7 @@ import numpy as np
 import ta
 import dash
 from dash import dcc, html, callback_context
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Input, Output, State, ALL
 from dash.exceptions import PreventUpdate
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -1201,10 +1201,20 @@ class TradingSystem:
                                     if amount_usdt > 1.0:
                                         trade_executed = agent['wallet'].execute_buy(symbol, amount_usdt, current_price)
                                 elif signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
-                                    if symbol in agent['wallet'].holdings:
-                                        amount_crypto = agent['wallet'].holdings[symbol] * 0.5 * signal['confidence']
+                                    # Handle different symbol formats
+                                    base_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+                                    
+                                    # Check if we have the asset in either format
+                                    holding_symbol = None
+                                    if base_symbol in agent['wallet'].holdings and agent['wallet'].holdings[base_symbol] > 0:
+                                        holding_symbol = base_symbol
+                                    elif symbol in agent['wallet'].holdings and agent['wallet'].holdings[symbol] > 0:
+                                        holding_symbol = symbol
+                                    
+                                    if holding_symbol:
+                                        amount_crypto = agent['wallet'].holdings[holding_symbol] * 0.5 * signal['confidence']
                                         if amount_crypto > 0:
-                                            trade_executed = agent['wallet'].execute_sell(symbol, amount_crypto, current_price)
+                                            trade_executed = agent['wallet'].execute_sell(holding_symbol, amount_crypto, current_price)
                         
                         # Update wallet metrics after trade
                         wallet_metrics = agent['wallet'].get_performance_metrics(current_prices)
@@ -1598,21 +1608,24 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
             agent['wallet'].holdings = {}
     
     app.layout = html.Div([
-        # Header with new style
+        # Header with modern design
         html.Div([
             html.Div([
                 html.H1([
-                    title + " ",
+                    title,
                     html.Span("LIVE", className='live-badge')
                 ], className='dashboard-title'),
                 html.P([
-                    subtitle + " ",
+                    subtitle,
                     html.Span("🤖", className='emoji'),
                     html.Span("💰", className='emoji')
                 ], className='dashboard-subtitle')
             ], className='header-content'),
             html.Div([
-                html.Button("Reset All Traders", id='reset-traders-button', className='reset-button'),
+                html.Button([
+                    html.Span("Reset All Traders"),
+                    html.Span("🔄", className='emoji')
+                ], id='reset-traders-button', className='reset-button'),
                 html.Div(id='market-summary-stats', className='market-stats')
             ], className='header-stats')
         ], className='header'),
@@ -1620,11 +1633,17 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
         # Navigation with tooltips
         html.Div([
             html.Div([
-                html.Button("Market Overview", id='nav-market-overview', className='nav-button active'),
+                html.Button([
+                    html.Span("📊", className='emoji'),
+                    html.Span("Market Overview")
+                ], id='nav-market-overview', className='nav-button active'),
                 html.Div("View market prices and charts", className='tooltip')
             ], className='nav-item'),
             html.Div([
-                html.Button("Traders Portfolios", id='nav-traders-comparison', className='nav-button'),
+                html.Button([
+                    html.Span("👥", className='emoji'),
+                    html.Span("Traders Portfolios")
+                ], id='nav-traders-comparison', className='nav-button'),
                 html.Div("Compare trader performance", className='tooltip')
             ], className='nav-item')
         ], className='nav-container'),
@@ -1642,11 +1661,26 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
             interval=5 * 60 * 1000,  # in milliseconds
             n_intervals=0
         ),
+        
+        # Refresh indicator
+        html.Div([
+            html.Span("Last updated: ", className="refresh-label"),
+            html.Span(id="last-update-time", className="refresh-time"),
+            html.Div(id="refresh-spinner", className="refresh-spinner")
+        ], className="refresh-indicator"),
 
         # Main content area with reorganized layout
         html.Div([
             # Market Overview Tab
             html.Div([
+                html.Div([
+                    html.H2("Market Overview", className="section-title"),
+                    html.Div([
+                        html.Span("Real-time market data and charts", className="section-subtitle"),
+                        html.Div(id="market-refresh-indicator", className="section-refresh-indicator")
+                    ], className="section-subtitle-container")
+                ], className="section-header"),
+                
                 # Charts Grid at the top
                 html.Div(id='multi-chart-container', className='chart-grid'),
                 
@@ -1695,10 +1729,42 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
             
             # Traders Portfolio Tab - Initially hidden
             html.Div([
+                html.Div([
+                    html.H2("Traders Portfolios", className="section-title"),
+                    html.Div([
+                        html.Span("Compare trader performance and strategies", className="section-subtitle"),
+                        html.Div(id="traders-refresh-indicator", className="section-refresh-indicator")
+                    ], className="section-subtitle-container")
+                ], className="section-header"),
+                
+                # Performance cards with sorting
+                html.Div([
+                    html.Div([
+                        html.H3([
+                            html.Span("🏆", className="emoji"),
+                            "Trader Performance"
+                        ]),
+                        dcc.Dropdown(
+                            id='performance-sort',
+                            options=[
+                                {'label': 'Sort by Total Value', 'value': 'total'},
+                                {'label': 'Sort by Profit %', 'value': 'profit'},
+                                {'label': 'Sort by Goal Progress', 'value': 'goal'}
+                            ],
+                            value='total',
+                            className='performance-sort'
+                        )
+                    ], className='performance-header'),
+                    html.Div(id='traders-performance-cards', className='performance-cards-grid')
+                ], className='performance-section'),
+                
                 # Signals Table with filter
                 html.Div([
                     html.Div([
-                        html.H3("Recent Signals"),
+                        html.H3([
+                            html.Span("📊", className="emoji"),
+                            "Recent Signals"
+                        ]),
                         dcc.Dropdown(
                             id='signal-filter',
                             options=[
@@ -1714,28 +1780,13 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                     html.Div(id='signals-table', className='signals-table-container')
                 ], className='signals-section'),
                 
-                # Performance cards with sorting
-                html.Div([
-                    html.Div([
-                        html.H3("Trader Performance"),
-                        dcc.Dropdown(
-                            id='performance-sort',
-                            options=[
-                                {'label': 'Sort by Total Value', 'value': 'total'},
-                                {'label': 'Sort by Profit %', 'value': 'profit'},
-                                {'label': 'Sort by Goal Progress', 'value': 'goal'}
-                            ],
-                            value='total',
-                            className='performance-sort'
-                        )
-                    ], className='performance-header'),
-                    html.Div(id='traders-performance-cards', className='performance-cards-grid')
-                ], className='performance-section'),
-                
                 # Agent Discussions Panel with filters
                 html.Div([
                     html.Div([
-                        html.H3("Agent Discussions"),
+                        html.H3([
+                            html.Span("💬", className="emoji"),
+                            "Agent Discussions"
+                        ]),
                         dcc.Dropdown(
                             id='discussion-filter',
                             options=[
@@ -1753,12 +1804,24 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
             ], id='traders-portfolio-tab', style={'display': 'none'}),
         ], className='main-content'),
         
-        # Memory status indicator with animation
+        # Memory status indicator
         html.Div([
-            html.Span("💾", className="icon"),
-            html.Span("Memory system active", id="memory-status-text"),
+            html.Div(id='memory-status-text', className='memory-status-text'),
             html.Div(className="pulse-ring")
-        ], id="memory-status", className="memory-status")
+        ], id="memory-status", className="memory-status"),
+        
+        # Trade History Modal
+        html.Div([
+            html.Div([
+                html.Div([
+                    html.Div([
+                        html.H3(id="trade-history-title", className="modal-title"),
+                        html.Button("×", id="close-trade-modal", className="close-modal-btn")
+                    ], className="modal-header"),
+                    html.Div(id="trade-history-content", className="modal-content"),
+                ], className="modal-container")
+            ], className="modal-backdrop")
+        ], id="trade-history-modal", style={"display": "none"})
     ], className='dashboard-container')
     
     @app.callback(
@@ -2074,7 +2137,10 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                         ], className='holdings-container'),
                         # Add Trade History Section
                         html.Div([
-                            html.H4("Recent Trades", className='trades-title'),
+                            html.Div([
+                                html.H4("Recent Trades", className='trades-title'),
+                                html.Button("View All", id={'type': 'view-trades-btn', 'index': data['name']}, className='view-all-btn')
+                            ], className='trades-header'),
                             html.Div([
                                 html.Div([
                                     html.Div([
@@ -2165,7 +2231,7 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                     html.Div([
                         html.Div([
                             html.Span(
-                                message.split(':')[0],
+                                message.split(':')[0] if ':' in message else '',
                                 className='agent-name'
                             ),
                             html.Span(
@@ -2179,9 +2245,10 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
                 discussions.append(discussion)
             
             return html.Div(discussions, className='discussions-list')
+            
         except Exception as e:
             print(f"Error updating discussions: {str(e)}")
-            return dash.no_update
+            return html.Div("Error loading discussions", className='error-message')
     
     @app.callback(
         Output('memory-status', 'className'),
@@ -2259,6 +2326,120 @@ def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="
         except Exception as e:
             print(f"Error resetting traders: {str(e)}")
             return "Error resetting traders"
+    
+    @app.callback(
+        [Output('last-update-time', 'children'),
+         Output('refresh-spinner', 'className')],
+        [Input('auto-refresh-interval', 'n_intervals')]
+    )
+    def update_refresh_indicator(n):
+        """Update the refresh indicator with current time and show spinner during refresh."""
+        current_time = datetime.now().strftime('%H:%M:%S')
+        
+        # Show spinner for 3 seconds after refresh
+        spinner_class = "refresh-spinner active" if n % 10 == 0 else "refresh-spinner"
+        
+        return current_time, spinner_class
+    
+    @app.callback(
+        Output('market-refresh-indicator', 'className'),
+        [Input('auto-refresh-interval', 'n_intervals')]
+    )
+    def update_market_refresh_indicator(n):
+        """Update the market refresh indicator."""
+        # Show active indicator for 3 seconds after refresh
+        return "section-refresh-indicator active" if n % 10 == 0 else "section-refresh-indicator"
+    
+    @app.callback(
+        Output('traders-refresh-indicator', 'className'),
+        [Input('auto-refresh-interval', 'n_intervals')]
+    )
+    def update_traders_refresh_indicator(n):
+        """Update the traders refresh indicator."""
+        # Show active indicator for 3 seconds after refresh
+        return "section-refresh-indicator active" if n % 10 == 0 else "section-refresh-indicator"
+    
+    @app.callback(
+        [Output('trade-history-modal', 'style'),
+         Output('trade-history-title', 'children'),
+         Output('trade-history-content', 'children')],
+        [Input({'type': 'view-trades-btn', 'index': ALL}, 'n_clicks')],
+        [State({'type': 'view-trades-btn', 'index': ALL}, 'id')]
+    )
+    def show_trade_history(n_clicks, btn_ids):
+        """Show trade history modal when a View All button is clicked."""
+        ctx = callback_context
+        
+        if not ctx.triggered or not any(n_clicks):
+            raise PreventUpdate
+            
+        # Find which button was clicked
+        button_idx = next((i for i, n in enumerate(n_clicks) if n), None)
+        if button_idx is None:
+            raise PreventUpdate
+            
+        # Get the agent name from the button ID
+        agent_name = btn_ids[button_idx]['index']
+        
+        # Find the agent
+        agent = next((a for a in trading_system.agents if a['name'] == agent_name), None)
+        if not agent:
+            raise PreventUpdate
+            
+        # Get all trades for this agent
+        trades = agent['wallet'].trades_history
+        
+        # Create trade history table
+        if not trades:
+            content = html.Div("No trade history available", className="no-trades")
+        else:
+            # Sort trades by timestamp (newest first)
+            sorted_trades = sorted(trades, key=lambda x: x.get('timestamp', 0), reverse=True)
+            
+            # Create table
+            content = html.Table([
+                html.Thead(
+                    html.Tr([
+                        html.Th("Time"),
+                        html.Th("Action"),
+                        html.Th("Symbol"),
+                        html.Th("Amount"),
+                        html.Th("Price"),
+                        html.Th("Value (USDT)")
+                    ])
+                ),
+                html.Tbody([
+                    html.Tr([
+                        html.Td(
+                            datetime.fromtimestamp(trade.get('timestamp', 0)).strftime('%Y-%m-%d %H:%M:%S') 
+                            if isinstance(trade.get('timestamp', 0), (int, float)) 
+                            else str(trade.get('timestamp', 'N/A'))
+                        ),
+                        html.Td(
+                            trade.get('action', 'N/A'),
+                            className=f"trade-action-{trade.get('action', '').lower()}"
+                        ),
+                        html.Td(trade.get('symbol', 'N/A')),
+                        html.Td(f"{trade.get('amount_crypto', 0):.8f}"),
+                        html.Td(f"${trade.get('price', 0):.2f}"),
+                        html.Td(f"${trade.get('amount_usdt', 0):.2f}")
+                    ], className=f"trade-history-row {'buy-row' if trade.get('action', '').upper() == 'BUY' else 'sell-row'}")
+                    for trade in sorted_trades
+                ])
+            ], className="trade-history-table")
+        
+        return {'display': 'block'}, f"Trade History - {agent_name}", content
+    
+    @app.callback(
+        Output('trade-history-modal', 'style', allow_duplicate=True),
+        [Input('close-trade-modal', 'n_clicks')],
+        prevent_initial_call=True
+    )
+    def close_trade_history(n_clicks):
+        """Close the trade history modal."""
+        if n_clicks:
+            return {'display': 'none'}
+        raise PreventUpdate
     
     return app
 

@@ -43,16 +43,33 @@ class Wallet:
     
     def execute_sell(self, symbol: str, amount_crypto: float, price: float) -> bool:
         """Execute a sell order."""
-        if not self.can_sell(symbol, amount_crypto):
+        # Validate inputs
+        if price <= 0:
+            print(f"Error: Invalid price {price} for {symbol}")
             return False
             
+        if amount_crypto <= 0:
+            print(f"Error: Invalid amount {amount_crypto} for {symbol}")
+            return False
+            
+        # Check if we can sell
+        if not self.can_sell(symbol, amount_crypto):
+            print(f"Cannot sell {amount_crypto} {symbol}: insufficient balance (have {self.holdings.get(symbol, 0)})")
+            return False
+            
+        # Calculate USDT amount
         amount_usdt = amount_crypto * price
+        
+        # Update balances
         self.balance_usdt += amount_usdt
         self.holdings[symbol] -= amount_crypto
         
-        if self.holdings[symbol] < 1e-8:  # Remove dust
+        # Remove dust
+        if self.holdings[symbol] < 1e-8:
+            print(f"Removing dust amount of {symbol}: {self.holdings[symbol]}")
             del self.holdings[symbol]
             
+        # Record the trade
         self.trades_history.append({
             'timestamp': datetime.now(),
             'symbol': symbol,
@@ -62,6 +79,7 @@ class Wallet:
             'price': price
         })
         
+        print(f"Sold {amount_crypto:.8f} {symbol} for ${amount_usdt:.2f} at ${price:.2f}")
         return True
     
     def get_total_value_usdt(self, current_prices: Dict[str, float]) -> float:
@@ -132,22 +150,36 @@ class Wallet:
             return self.execute_buy(symbol, amount_usdt, current_price)
             
         elif action in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
-            # Check if we have the asset
-            if symbol not in self.holdings or self.holdings[symbol] <= 0:
+            # Handle different symbol formats (with or without /USDT)
+            base_symbol = symbol.split('/')[0] if '/' in symbol else symbol
+            
+            # Check if we have the asset in either format
+            holding_symbol = None
+            if base_symbol in self.holdings and self.holdings[base_symbol] > 0:
+                holding_symbol = base_symbol
+            elif symbol in self.holdings and self.holdings[symbol] > 0:
+                holding_symbol = symbol
+            
+            # If we don't have the asset, return False
+            if not holding_symbol:
                 return False
                 
             # Calculate amount to sell based on confidence
             if action == 'STRONG_SELL':
-                amount_crypto = self.holdings[symbol] * 0.8 * confidence  # Sell up to 80% of holdings for strong sell
+                amount_crypto = self.holdings[holding_symbol] * 0.8 * confidence  # Sell up to 80% of holdings for strong sell
             elif action == 'SELL':
-                amount_crypto = self.holdings[symbol] * 0.5 * confidence  # Sell up to 50% of holdings for sell
+                amount_crypto = self.holdings[holding_symbol] * 0.5 * confidence  # Sell up to 50% of holdings for sell
             else:  # SCALE_OUT
-                amount_crypto = self.holdings[symbol] * 0.3 * confidence  # Sell up to 30% of holdings for scaling out
+                amount_crypto = self.holdings[holding_symbol] * 0.3 * confidence  # Sell up to 30% of holdings for scaling out
                 
-            # Ensure minimum trade size
-            amount_crypto = min(amount_crypto, self.holdings[symbol])
+            # Ensure minimum trade size and don't exceed holdings
+            amount_crypto = min(amount_crypto, self.holdings[holding_symbol])
             
-            # Execute sell
-            return self.execute_sell(symbol, amount_crypto, current_price)
+            # Check if the amount is too small (dust)
+            if amount_crypto <= 1e-8:
+                return False
+                
+            # Execute sell with the correct symbol
+            return self.execute_sell(holding_symbol, amount_crypto, current_price)
             
         return False 
