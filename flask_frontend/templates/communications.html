@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+
+{% block title %}Communications - AI Crypto Trader{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Trader Communications</h1>
+
+<div class="card">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Trader Discussions</h5>
+    </div>
+    <div class="card-body">
+        <div id="communications-container">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading communications...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch communications data
+    fetchCommunications();
+
+    // Update function for WebSocket data
+    function updateData(data) {
+        if (data.communications) {
+            renderCommunications(data.communications);
+        }
+    }
+
+    // Fetch communications data
+    function fetchCommunications() {
+        fetch('/api/communications')
+            .then(response => response.json())
+            .then(data => {
+                renderCommunications(data.communications);
+            })
+            .catch(error => {
+                console.error('Error fetching communications:', error);
+                document.getElementById('communications-container').innerHTML = '<div class="alert alert-danger">Error loading communications</div>';
+            });
+    }
+
+    // Render communications data
+    function renderCommunications(communications) {
+        if (!communications || communications.length === 0) {
+            document.getElementById('communications-container').innerHTML = '<div class="alert alert-info">No communications yet</div>';
+            return;
+        }
+
+        let html = '';
+        communications.forEach(comm => {
+            const time = new Date(comm.timestamp).toLocaleTimeString();
+            const date = new Date(comm.timestamp).toLocaleDateString();
+            
+            html += `
+                <div class="mb-4">
+                    <div class="d-flex">
+                        <div class="trader-avatar" style="background-color: ${getTraderColor(comm.trader_name)};">
+                            ${comm.trader_name.charAt(0)}
+                        </div>
+                        <div class="flex-grow-1">
+                            <div class="d-flex justify-content-between">
+                                <strong>${comm.trader_name}</strong>
+                                <small class="text-muted">${date} ${time}</small>
+                            </div>
+                            <div class="message-bubble">
+                                ${comm.content}
+                            </div>
+                            
+                            ${renderResponses(comm.responses)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('communications-container').innerHTML = html;
+    }
+
+    // Render responses
+    function renderResponses(responses) {
+        if (!responses || responses.length === 0) {
+            return '';
+        }
+
+        let html = '<div class="ms-4 mt-2">';
+        
+        responses.forEach(response => {
+            const time = new Date(response.timestamp).toLocaleTimeString();
+            
+            html += `
+                <div class="d-flex mt-2">
+                    <div class="trader-avatar" style="background-color: ${getTraderColor(response.trader_name)}; width: 30px; height: 30px;">
+                        ${response.trader_name.charAt(0)}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="d-flex justify-content-between">
+                            <strong>${response.trader_name}</strong>
+                            <small class="text-muted">${time}</small>
+                        </div>
+                        <div class="message-bubble">
+                            ${response.content}
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        return html;
+    }
+
+    // Helper function to get trader color
+    function getTraderColor(traderName) {
+        const colors = {
+            'Warren Weber': '#4caf50',
+            'Sonia Soros': '#f44336',
+            'Pete the Scalper': '#ff9800',
+            'Johnny Bollinger': '#2196f3',
+            'Lena Lynch': '#9c27b0'
+        };
+        
+        return colors[traderName] || '#3f51b5';
+    }
+</script>
+{% endblock %} 

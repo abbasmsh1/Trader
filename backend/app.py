@@ -5,11 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import logging
 from datetime import datetime
+import os
+import sys
 
-from api.binance_api import BinanceAPI
-from models.simulation import Simulation
-from models.market import Market
-from utils.websocket_manager import WebSocketManager
+# Add the parent directory to the path so we can import our modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from backend.api.binance_api import BinanceAPI
+from backend.models.simulation import Simulation
+from backend.models.market import Market
+from backend.utils.websocket_manager import WebSocketManager
 
 # Configure logging
 logging.basicConfig(
@@ -134,4 +139,4 @@ async def broadcast_updates():
 
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=True) 
+    uvicorn.run("backend.app:app", host="0.0.0.0", port=8000, reload=True) 

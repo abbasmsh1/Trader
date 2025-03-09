@@ -12,6 +12,9 @@ from ..agents.sonia_soros import SoniaSoros
 from ..agents.pete_scalper import PeteScalper
 from ..agents.johnny_bollinger import JohnnyBollinger
 from ..agents.lena_lynch import LenaLynch
+from ..agents.elon_musk import ElonMusk
+from ..agents.jeff_bezos import JeffBezos
+from ..agents.warren_buffett import WarrenBuffett
 from ..config import SIMULATION_INTERVAL, COMMUNICATION_INTERVAL, TARGET_CAPITAL
 
 logger = logging.getLogger(__name__)
@@ -47,7 +50,10 @@ class Simulation:
             SoniaSoros(),
             PeteScalper(),
             JohnnyBollinger(),
-            LenaLynch()
+            LenaLynch(),
+            ElonMusk(),
+            JeffBezos(),
+            WarrenBuffett()
         ]
         logger.info(f"Initialized {len(self.traders)} traders")
     

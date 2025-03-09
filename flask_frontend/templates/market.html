@@ -1,0 +1,174 @@
+{% extends 'base.html' %}
+
+{% block title %}Market - AI Crypto Trader{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Cryptocurrency Market</h1>
+
+<div class="row" id="market-container">
+    <div class="text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Loading market data...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch market data
+    fetchMarket();
+
+    // Update function for WebSocket data
+    function updateData(data) {
+        if (data.market) {
+            renderMarket(data.market);
+        }
+    }
+
+    // Fetch market data
+    function fetchMarket() {
+        fetch('/api/market')
+            .then(response => response.json())
+            .then(data => {
+                renderMarket(data.market_data);
+            })
+            .catch(error => {
+                console.error('Error fetching market data:', error);
+                document.getElementById('market-container').innerHTML = '<div class="alert alert-danger">Error loading market data</div>';
+            });
+    }
+
+    // Render market data
+    function renderMarket(marketData) {
+        if (!marketData || Object.keys(marketData).length === 0) {
+            document.getElementById('market-container').innerHTML = '<div class="alert alert-info">No market data available</div>';
+            return;
+        }
+
+        let html = '';
+        
+        for (const [symbol, data] of Object.entries(marketData)) {
+            const priceChangeClass = data.price_change_percent_24h > 0 ? 'text-success' : 'text-danger';
+            const priceChangeIcon = data.price_change_percent_24h > 0 ? 'bi-arrow-up' : 'bi-arrow-down';
+            
+            html += `
+                <div class="col-md-6 mb-4">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">${symbol}</h5>
+                            <span class="badge ${priceChangeClass}">
+                                <i class="bi ${priceChangeIcon}"></i>
+                                ${data.price_change_percent_24h?.toFixed(2) || 0}%
+                            </span>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between mb-3">
+                                <div>
+                                    <h2>$${data.price?.toFixed(2) || 'N/A'}</h2>
+                                    <p class="text-muted">Current Price</p>
+                                </div>
+                                <div class="text-end">
+                                    <div class="${priceChangeClass}">
+                                        <i class="bi ${priceChangeIcon}"></i>
+                                        $${data.price_change_24h?.toFixed(2) || 0}
+                                    </div>
+                                    <p class="text-muted">24h Change</p>
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-6">
+                                    <div class="d-flex justify-content-between">
+                                        <span>24h High:</span>
+                                        <span>$${data.high_24h?.toFixed(2) || 'N/A'}</span>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="d-flex justify-content-between">
+                                        <span>24h Low:</span>
+                                        <span>$${data.low_24h?.toFixed(2) || 'N/A'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between mb-3">
+                                <span>24h Volume:</span>
+                                <span>${data.volume_24h?.toFixed(2) || 'N/A'}</span>
+                            </div>
+                            
+                            <div class="chart-container" id="chart-${symbol}">
+                                <div class="text-center">
+                                    <p class="text-muted">Chart not available</p>
+                                </div>
+                            </div>
+                            
+                            <h6 class="mt-3">Technical Indicators</h6>
+                            ${renderTechnicalIndicators(data.indicators)}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        document.getElementById('market-container').innerHTML = html;
+    }
+
+    // Render technical indicators
+    function renderTechnicalIndicators(indicators) {
+        if (!indicators) {
+            return '<p class="text-muted">No technical indicators available</p>';
+        }
+
+        let html = '<div class="table-responsive"><table class="table table-dark table-sm"><thead><tr><th>Timeframe</th><th>RSI</th><th>MACD</th><th>Bollinger</th></tr></thead><tbody>';
+        
+        for (const [timeframe, data] of Object.entries(indicators)) {
+            const rsiValue = data.RSI?.value?.toFixed(2) || 'N/A';
+            const rsiClass = getRsiClass(data.RSI?.value);
+            
+            const macdValue = data.MACD?.interpretation || 'N/A';
+            const macdClass = getMacdClass(data.MACD?.interpretation);
+            
+            const bollingerValue = data.BOLLINGER?.interpretation || 'N/A';
+            const bollingerClass = getBollingerClass(data.BOLLINGER?.interpretation);
+            
+            html += `
+                <tr>
+                    <td>${timeframe}</td>
+                    <td class="${rsiClass}">${rsiValue}</td>
+                    <td class="${macdClass}">${macdValue}</td>
+                    <td class="${bollingerClass}">${bollingerValue}</td>
+                </tr>
+            `;
+        }
+        
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // Helper function to get RSI class
+    function getRsiClass(value) {
+        if (!value) return '';
+        if (value < 30) return 'text-success';
+        if (value > 70) return 'text-danger';
+        return '';
+    }
+
+    // Helper function to get MACD class
+    function getMacdClass(interpretation) {
+        if (!interpretation) return '';
+        if (interpretation.includes('bullish')) return 'text-success';
+        if (interpretation.includes('bearish')) return 'text-danger';
+        return '';
+    }
+
+    // Helper function to get Bollinger class
+    function getBollingerClass(interpretation) {
+        if (!interpretation) return '';
+        if (interpretation === 'oversold') return 'text-success';
+        if (interpretation === 'overbought') return 'text-danger';
+        return '';
+    }
+</script>
+{% endblock %} 

@@ -7,7 +7,10 @@ from binance.exceptions import BinanceAPIException
 import time
 from datetime import datetime
 
-from ..config import BINANCE_API_KEY, BINANCE_API_SECRET, TRADING_PAIRS, TIMEFRAMES
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import BINANCE_API_KEY, BINANCE_API_SECRET, TRADING_PAIRS, TIMEFRAMES
 
 logger = logging.getLogger(__name__)
 

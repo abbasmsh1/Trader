@@ -1,0 +1,261 @@
+{% extends 'base.html' %}
+
+{% block title %}Dashboard - AI Crypto Trader{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">AI Crypto Trader Dashboard</h1>
+
+<div class="row">
+    <!-- Leaderboard -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Trader Leaderboard</h5>
+            </div>
+            <div class="card-body">
+                <div id="leaderboard-container">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Loading trader data...</p>
+                    </div>
+                </div>
+                <a href="/traders" class="btn btn-outline-primary w-100 mt-3">View All Traders</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Market Overview -->
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">Market Overview</h5>
+            </div>
+            <div class="card-body">
+                <div id="market-container">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Loading market data...</p>
+                    </div>
+                </div>
+                <a href="/market" class="btn btn-outline-primary w-100 mt-3">View Market Details</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Communications -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="card-title mb-0">Recent Communications</h5>
+    </div>
+    <div class="card-body">
+        <div id="communications-container">
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p>Loading communications...</p>
+            </div>
+        </div>
+        <a href="/communications" class="btn btn-outline-primary w-100 mt-3">View All Communications</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch initial data
+    fetchTraders();
+    fetchMarket();
+    fetchCommunications();
+
+    // Update function for WebSocket data
+    function updateData(data) {
+        if (data.traders) {
+            renderTraders(data.traders);
+        }
+        if (data.market) {
+            renderMarket(data.market);
+        }
+        if (data.communications) {
+            renderCommunications(data.communications);
+        }
+    }
+
+    // Fetch traders data
+    function fetchTraders() {
+        fetch('/api/traders')
+            .then(response => response.json())
+            .then(data => {
+                renderTraders(data.traders);
+            })
+            .catch(error => {
+                console.error('Error fetching traders:', error);
+                document.getElementById('leaderboard-container').innerHTML = '<div class="alert alert-danger">Error loading trader data</div>';
+            });
+    }
+
+    // Fetch market data
+    function fetchMarket() {
+        fetch('/api/market')
+            .then(response => response.json())
+            .then(data => {
+                renderMarket(data.market_data);
+            })
+            .catch(error => {
+                console.error('Error fetching market data:', error);
+                document.getElementById('market-container').innerHTML = '<div class="alert alert-danger">Error loading market data</div>';
+            });
+    }
+
+    // Fetch communications data
+    function fetchCommunications() {
+        fetch('/api/communications')
+            .then(response => response.json())
+            .then(data => {
+                renderCommunications(data.communications);
+            })
+            .catch(error => {
+                console.error('Error fetching communications:', error);
+                document.getElementById('communications-container').innerHTML = '<div class="alert alert-danger">Error loading communications</div>';
+            });
+    }
+
+    // Render traders data
+    function renderTraders(traders) {
+        if (!traders || traders.length === 0) {
+            document.getElementById('leaderboard-container').innerHTML = '<div class="alert alert-info">No trader data available</div>';
+            return;
+        }
+
+        // Sort traders by portfolio value
+        const sortedTraders = [...traders].sort((a, b) => {
+            const aTotal = calculatePortfolioValue(a);
+            const bTotal = calculatePortfolioValue(b);
+            return bTotal - aTotal;
+        });
+
+        let html = '';
+        sortedTraders.forEach((trader, index) => {
+            const portfolioValue = calculatePortfolioValue(trader);
+            const progress = (portfolioValue / 100) * 100; // Progress toward $100 goal
+            
+            html += `
+                <div class="mb-3">
+                    <div class="d-flex align-items-center mb-1">
+                        <div class="me-2" style="width: 30px; height: 30px; background-color: ${getPositionColor(index)}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                            ${index + 1}
+                        </div>
+                        <a href="/trader/${trader.id}" class="text-decoration-none text-white flex-grow-1">
+                            ${trader.name}
+                        </a>
+                        <span class="${portfolioValue >= 20 ? 'text-success' : 'text-danger'}">
+                            $${portfolioValue.toFixed(2)}
+                        </span>
+                    </div>
+                    <div class="progress" style="height: 8px; border-radius: 4px;">
+                        <div class="progress-bar ${progress >= 100 ? 'bg-success' : 'bg-primary'}" role="progressbar" style="width: ${Math.min(progress, 100)}%"></div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('leaderboard-container').innerHTML = html;
+    }
+
+    // Render market data
+    function renderMarket(marketData) {
+        if (!marketData || Object.keys(marketData).length === 0) {
+            document.getElementById('market-container').innerHTML = '<div class="alert alert-info">No market data available</div>';
+            return;
+        }
+
+        let html = '<div class="row">';
+        
+        for (const [symbol, data] of Object.entries(marketData)) {
+            const priceChangeClass = data.price_change_percent_24h > 0 ? 'text-success' : 'text-danger';
+            const priceChangeIcon = data.price_change_percent_24h > 0 ? 'bi-arrow-up' : 'bi-arrow-down';
+            
+            html += `
+                <div class="col-6 mb-3">
+                    <div class="p-3" style="background-color: #2d2d2d; border-radius: 8px;">
+                        <h6>${symbol}</h6>
+                        <h5>$${data.price?.toFixed(2) || 'N/A'}</h5>
+                        <span class="badge ${priceChangeClass}">
+                            <i class="bi ${priceChangeIcon}"></i>
+                            ${data.price_change_percent_24h?.toFixed(2) || 0}%
+                        </span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        document.getElementById('market-container').innerHTML = html;
+    }
+
+    // Render communications data
+    function renderCommunications(communications) {
+        if (!communications || communications.length === 0) {
+            document.getElementById('communications-container').innerHTML = '<div class="alert alert-info">No communications yet</div>';
+            return;
+        }
+
+        // Get the 5 most recent communications
+        const recentCommunications = communications.slice(0, 5);
+        
+        let html = '';
+        recentCommunications.forEach(comm => {
+            const time = new Date(comm.timestamp).toLocaleTimeString();
+            
+            html += `
+                <div class="mb-3">
+                    <div class="d-flex">
+                        <div class="me-2" style="width: 40px; height: 40px; background-color: #3f51b5; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                            ${comm.trader_name.charAt(0)}
+                        </div>
+                        <div>
+                            <div>
+                                <strong>${comm.trader_name}</strong>
+                                <small class="text-muted ms-2">${time}</small>
+                            </div>
+                            <p class="mb-0">${comm.content}</p>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('communications-container').innerHTML = html;
+    }
+
+    // Helper function to calculate portfolio value
+    function calculatePortfolioValue(trader) {
+        let total = trader.wallet.USDT || 0;
+        
+        for (const [symbol, amount] of Object.entries(trader.wallet)) {
+            if (symbol !== 'USDT') {
+                // This is a simplification since we don't have market data here
+                // In a real implementation, you would use the current price from market data
+                total += amount * 1000; // Placeholder value
+            }
+        }
+        
+        return total;
+    }
+
+    // Helper function to get position color
+    function getPositionColor(position) {
+        switch (position) {
+            case 0: return 'gold';
+            case 1: return 'silver';
+            case 2: return '#cd7f32'; // bronze
+            default: return 'grey';
+        }
+    }
+</script>
+{% endblock %} 

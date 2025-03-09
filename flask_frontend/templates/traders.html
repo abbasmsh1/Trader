@@ -1,0 +1,355 @@
+{% extends 'base.html' %}
+
+{% block title %}Traders - AI Crypto Trader{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1 class="display-4">AI Trader Agents</h1>
+            <p class="lead text-muted">Watch our AI traders compete in real-time cryptocurrency markets</p>
+        </div>
+    </div>
+
+    <div class="row" id="traders-container">
+        <div class="text-center w-100">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading trader data...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Fetch traders data
+    fetchTraders();
+
+    // Update function for WebSocket data
+    function updateData(data) {
+        if (data.traders) {
+            renderTraders(data.traders);
+        }
+    }
+
+    // Fetch traders data
+    function fetchTraders() {
+        fetch('/api/traders')
+            .then(response => response.json())
+            .then(data => {
+                renderTraders(data.traders);
+            })
+            .catch(error => {
+                console.error('Error fetching traders:', error);
+                document.getElementById('traders-container').innerHTML = '<div class="alert alert-danger">Error loading trader data</div>';
+            });
+    }
+
+    // Render traders data
+    function renderTraders(traders) {
+        if (!traders || traders.length === 0) {
+            document.getElementById('traders-container').innerHTML = '<div class="alert alert-info">No trader data available</div>';
+            return;
+        }
+
+        // Sort traders by portfolio value
+        const sortedTraders = [...traders].sort((a, b) => {
+            const aTotal = calculatePortfolioValue(a);
+            const bTotal = calculatePortfolioValue(b);
+            return bTotal - aTotal;
+        });
+
+        let html = '';
+        sortedTraders.forEach((trader, index) => {
+            const portfolioValue = calculatePortfolioValue(trader);
+            const progress = (portfolioValue / TARGET_CAPITAL) * 100;
+            const traderColor = getTraderColor(trader.name);
+            
+            html += `
+                <div class="col-md-6 col-xl-4 mb-4">
+                    <div class="card h-100 trader-card" style="border-top: 3px solid ${traderColor}">
+                        <div class="card-header d-flex align-items-center">
+                            <div class="trader-avatar me-3" style="background-color: ${traderColor}">
+                                ${trader.name.charAt(0)}
+                            </div>
+                            <div class="flex-grow-1">
+                                <h5 class="card-title mb-0">${trader.name}</h5>
+                                <small class="text-muted">${trader.trading_style}</small>
+                            </div>
+                            <div class="text-end">
+                                <span class="badge ${trader.active ? 'bg-success' : 'bg-danger'}">
+                                    ${trader.active ? 'Active' : 'Inactive'}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="card-body">
+                            <div class="mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0">Portfolio Value</h6>
+                                    <h4 class="mb-0 ${portfolioValue >= STARTING_CAPITAL ? 'text-success' : 'text-danger'}">
+                                        $${portfolioValue.toFixed(2)}
+                                    </h4>
+                                </div>
+                                <div class="progress" style="height: 8px;">
+                                    <div class="progress-bar ${progress >= 100 ? 'bg-success' : 'bg-primary'}" 
+                                         role="progressbar" 
+                                         style="width: ${Math.min(progress, 100)}%"
+                                         title="Progress to $${TARGET_CAPITAL} goal">
+                                    </div>
+                                </div>
+                                <small class="text-muted">Goal Progress: ${progress.toFixed(1)}%</small>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6 class="mb-3">Holdings</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-sm align-middle">
+                                        <thead>
+                                            <tr>
+                                                <th>Asset</th>
+                                                <th class="text-end">Amount</th>
+                                                <th class="text-end">Value</th>
+                                                <th class="text-end">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${renderHoldings(trader)}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <h6 class="mb-3">Recent Trades</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-dark table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Type</th>
+                                                <th>Asset</th>
+                                                <th class="text-end">Amount</th>
+                                                <th class="text-end">Price</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${renderTrades(trader.trades)}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="trader-info">
+                                <h6 class="mb-2">Trader Profile</h6>
+                                <p class="small mb-2"><strong>Personality:</strong> ${trader.personality}</p>
+                                <p class="small mb-0"><strong>Backstory:</strong> ${trader.backstory}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        document.getElementById('traders-container').innerHTML = html;
+    }
+
+    // Render holdings
+    function renderHoldings(trader) {
+        let html = '';
+        for (const [symbol, amount] of Object.entries(trader.wallet)) {
+            if (amount > 0) {  // Only show non-zero holdings
+                const isUSDT = symbol === 'USDT';
+                const value = isUSDT ? amount : (amount * getCurrentPrice(symbol));
+                
+                html += `
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <i class="bi ${getAssetIcon(symbol)} me-2"></i>
+                                ${symbol}
+                            </div>
+                        </td>
+                        <td class="text-end">${formatAmount(amount, symbol)}</td>
+                        <td class="text-end">$${value.toFixed(2)}</td>
+                        <td class="text-end">
+                            ${!isUSDT ? `
+                                <button class="btn btn-sm btn-outline-danger" 
+                                        onclick="sellAsset('${trader.id}', '${symbol}', ${amount})"
+                                        title="Sell ${symbol}">
+                                    <i class="bi bi-currency-exchange"></i>
+                                </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+        return html || '<tr><td colspan="4" class="text-center">No holdings</td></tr>';
+    }
+
+    // Render trades
+    function renderTrades(trades) {
+        if (!trades || trades.length === 0) {
+            return '<tr><td colspan="4" class="text-center">No trades yet</td></tr>';
+        }
+
+        let html = '';
+        const recentTrades = trades.slice(-5).reverse();  // Get last 5 trades in reverse order
+        
+        recentTrades.forEach(trade => {
+            const typeClass = trade.type === 'buy' ? 'text-success' : 'text-danger';
+            const typeIcon = trade.type === 'buy' ? 'bi-arrow-down-circle' : 'bi-arrow-up-circle';
+            
+            html += `
+                <tr>
+                    <td>
+                        <i class="bi ${typeIcon} ${typeClass} me-1"></i>
+                        <span class="${typeClass}">${trade.type.toUpperCase()}</span>
+                    </td>
+                    <td>${trade.symbol}</td>
+                    <td class="text-end">${formatAmount(trade.amount_crypto, trade.symbol)}</td>
+                    <td class="text-end">$${trade.price.toFixed(2)}</td>
+                </tr>
+            `;
+        });
+        
+        return html;
+    }
+
+    // Helper function to format amounts
+    function formatAmount(amount, symbol) {
+        if (symbol === 'USDT') {
+            return amount.toFixed(2);
+        }
+        return amount.toFixed(8);
+    }
+
+    // Helper function to get asset icon
+    function getAssetIcon(symbol) {
+        const icons = {
+            'USDT': 'bi-coin',
+            'BTC': 'bi-currency-bitcoin',
+            'ETH': 'bi-diagram-3',
+            'BNB': 'bi-hexagon',
+            'XRP': 'bi-reception-4'
+        };
+        return icons[symbol] || 'bi-coin';
+    }
+
+    // Helper function to calculate portfolio value
+    function calculatePortfolioValue(trader) {
+        let total = trader.wallet.USDT || 0;
+        
+        for (const [symbol, amount] of Object.entries(trader.wallet)) {
+            if (symbol !== 'USDT') {
+                const price = getCurrentPrice(symbol);
+                total += amount * price;
+            }
+        }
+        
+        return total;
+    }
+
+    // Helper function to get current price (simulated)
+    function getCurrentPrice(symbol) {
+        const prices = {
+            'BTC': 82750,
+            'ETH': 2020,
+            'BNB': 552,
+            'XRP': 2.10
+        };
+        return prices[symbol] || 0;
+    }
+
+    // Helper function to get trader color
+    function getTraderColor(traderName) {
+        const colors = {
+            'Warren Weber': '#4caf50',
+            'Sonia Soros': '#f44336',
+            'Pete the Scalper': '#ff9800',
+            'Johnny Bollinger': '#2196f3',
+            'Lena Lynch': '#9c27b0',
+            'Elon Musk': '#e91e63',
+            'Jeff Bezos': '#009688',
+            'Warren Buffett': '#795548'
+        };
+        return colors[traderName] || '#3f51b5';
+    }
+
+    // Sell asset function
+    function sellAsset(traderId, symbol, amount) {
+        if (!confirm(`Are you sure you want to sell ${formatAmount(amount, symbol)} ${symbol}?`)) {
+            return;
+        }
+
+        fetch(`/api/traders/${traderId}/sell`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                symbol: symbol,
+                amount: amount
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                fetchTraders();  // Refresh the data
+            } else {
+                alert('Failed to sell asset: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error selling asset:', error);
+            alert('Failed to sell asset. Please try again.');
+        });
+    }
+
+    // Constants
+    const STARTING_CAPITAL = 20;  // Starting capital in USDT
+    const TARGET_CAPITAL = 100;   // Target capital in USDT
+</script>
+
+<style>
+    .trader-card {
+        transition: transform 0.2s ease-in-out;
+    }
+    
+    .trader-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    .trader-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        color: white;
+        font-weight: bold;
+    }
+    
+    .table-dark {
+        background-color: transparent;
+        margin-bottom: 0;
+    }
+    
+    .table-dark td, .table-dark th {
+        border-color: #2d2d2d;
+    }
+    
+    .progress {
+        background-color: #2d2d2d;
+    }
+    
+    .trader-info {
+        border-top: 1px solid #2d2d2d;
+        padding-top: 1rem;
+    }
+</style>
+{% endblock %} 

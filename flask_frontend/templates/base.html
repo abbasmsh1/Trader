@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI Crypto Trader{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block extra_css %}{% endblock %}
+    <style>
+        body {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .navbar {
+            background-color: #1e1e1e;
+        }
+        .card {
+            background-color: #1e1e1e;
+            border: 1px solid #333;
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background-color: #2d2d2d;
+            border-bottom: 1px solid #333;
+        }
+        .table {
+            color: #ffffff;
+        }
+        .table-dark {
+            background-color: #1e1e1e;
+        }
+        .nav-link.active {
+            background-color: #3f51b5 !important;
+            color: white !important;
+        }
+        .text-success {
+            color: #4caf50 !important;
+        }
+        .text-danger {
+            color: #f44336 !important;
+        }
+        .progress {
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up"></i> AI Crypto Trader
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/' %}active{% endif %}" href="/">
+                            <i class="bi bi-speedometer2"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/traders' %}active{% endif %}" href="/traders">
+                            <i class="bi bi-people"></i> Traders
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/market' %}active{% endif %}" href="/market">
+                            <i class="bi bi-graph-up-arrow"></i> Market
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.path == '/communications' %}active{% endif %}" href="/communications">
+                            <i class="bi bi-chat-dots"></i> Communications
+                        </a>
+                    </li>
+                </ul>
+                <div class="ms-auto">
+                    <span id="connection-status" class="badge bg-danger">Disconnected</span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% block content %}{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        // WebSocket connection
+        const socket = new WebSocket('ws://localhost:8000/ws');
+        const connectionStatus = document.getElementById('connection-status');
+
+        socket.onopen = function(e) {
+            console.log('Connected to WebSocket server');
+            connectionStatus.textContent = 'Connected';
+            connectionStatus.classList.remove('bg-danger');
+            connectionStatus.classList.add('bg-success');
+        };
+
+        socket.onclose = function(e) {
+            console.log('Disconnected from WebSocket server');
+            connectionStatus.textContent = 'Disconnected';
+            connectionStatus.classList.remove('bg-success');
+            connectionStatus.classList.add('bg-danger');
+        };
+
+        socket.onerror = function(error) {
+            console.error('WebSocket error:', error);
+            connectionStatus.textContent = 'Error';
+            connectionStatus.classList.remove('bg-success');
+            connectionStatus.classList.add('bg-danger');
+        };
+
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('Received data:', data);
+            
+            // Call the update function if it exists
+            if (typeof updateData === 'function') {
+                updateData(data);
+            }
+        };
+    </script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 
