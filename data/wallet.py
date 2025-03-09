@@ -82,10 +82,21 @@ class Wallet:
         total_return = ((total_value - self.initial_balance_usdt) / 
                        self.initial_balance_usdt * 100)
         
+        # Create holdings with prices for display
+        holdings_with_prices = {}
+        for symbol, amount in self.holdings.items():
+            price = current_prices.get(symbol.split('/')[0] if '/' in symbol else symbol, 0)
+            holdings_with_prices[symbol] = {
+                'amount': amount,
+                'price': price,
+                'value_usdt': amount * price
+            }
+        
         return {
             'total_value_usdt': total_value,
             'balance_usdt': self.balance_usdt,
             'holdings': self.holdings.copy(),
+            'holdings_with_prices': holdings_with_prices,
             'total_return_pct': total_return,
             'trade_count': len(self.trades_history),
             'realized_pnl': self.balance_usdt - self.initial_balance_usdt
@@ -93,4 +104,50 @@ class Wallet:
     
     def get_trade_history_df(self) -> pd.DataFrame:
         """Get trade history as a DataFrame."""
-        return pd.DataFrame(self.trades_history) 
+        return pd.DataFrame(self.trades_history)
+    
+    def execute_trade(self, symbol: str, signal: Dict, current_price: float) -> bool:
+        """Execute a trade based on the signal."""
+        action = signal.get('action', 'HOLD')
+        confidence = signal.get('confidence', 0.5)
+        
+        # Skip if action is HOLD or WATCH
+        if action in ['HOLD', 'WATCH']:
+            return False
+            
+        # Determine trade size based on confidence and action
+        if action in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+            # Calculate amount to buy based on confidence
+            if action == 'STRONG_BUY':
+                amount_usdt = self.balance_usdt * 0.5 * confidence  # Use up to 50% of balance for strong buy
+            elif action == 'BUY':
+                amount_usdt = self.balance_usdt * 0.3 * confidence  # Use up to 30% of balance for buy
+            else:  # SCALE_IN
+                amount_usdt = self.balance_usdt * 0.2 * confidence  # Use up to 20% of balance for scaling in
+                
+            # Ensure minimum trade size
+            amount_usdt = max(amount_usdt, 1.0) if self.balance_usdt >= 5.0 else self.balance_usdt * 0.2
+            
+            # Execute buy
+            return self.execute_buy(symbol, amount_usdt, current_price)
+            
+        elif action in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+            # Check if we have the asset
+            if symbol not in self.holdings or self.holdings[symbol] <= 0:
+                return False
+                
+            # Calculate amount to sell based on confidence
+            if action == 'STRONG_SELL':
+                amount_crypto = self.holdings[symbol] * 0.8 * confidence  # Sell up to 80% of holdings for strong sell
+            elif action == 'SELL':
+                amount_crypto = self.holdings[symbol] * 0.5 * confidence  # Sell up to 50% of holdings for sell
+            else:  # SCALE_OUT
+                amount_crypto = self.holdings[symbol] * 0.3 * confidence  # Sell up to 30% of holdings for scaling out
+                
+            # Ensure minimum trade size
+            amount_crypto = min(amount_crypto, self.holdings[symbol])
+            
+            # Execute sell
+            return self.execute_sell(symbol, amount_crypto, current_price)
+            
+        return False 

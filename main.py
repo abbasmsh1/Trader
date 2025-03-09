@@ -1,35 +1,42 @@
 import os
-from typing import List, Dict
-import pandas as pd
-from datetime import datetime, timedelta
 import time
-from data.market_data import MarketDataFetcher
-from agents.value_investor import ValueInvestor
-from agents.tech_disruptor import TechDisruptor
-from agents.trend_follower import TrendFollower
-from agents.contrarian_trader import ContrarianTrader
-from agents.macro_trader import MacroTrader
-from agents.swing_trader import SwingTrader
+import random
+import pandas as pd
+import numpy as np
+import ta
 import dash
 from dash import dcc, html, callback_context
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
-import plotly.graph_objs as go
-from threading import Thread, Lock
-import plotly.io as pio
-from config.settings import DEFAULT_SYMBOLS, SYSTEM_PARAMS, TIMEFRAMES
-import ta
+import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from agents.wallet import Wallet
-import random
+from datetime import datetime, timedelta
+from typing import Dict, List, Tuple, Optional
+from threading import Lock, Thread
 
-# Set default plotly theme
-pio.templates.default = "plotly_dark"
+from data.market_data import MarketDataFetcher
+from data.wallet import Wallet
+
+# System parameters
+SYSTEM_PARAMS = {
+    'update_interval': 60,  # Default update interval in seconds
+    'cache_ttl': 300,       # Cache time-to-live in seconds (5 minutes)
+    'save_interval': 300,   # State save interval in seconds (5 minutes)
+    'record_interval': 60,  # Holdings record interval in seconds (1 minute)
+    'max_history': 1000,    # Maximum number of signals to keep in history
+    'max_holdings_history': 1000,  # Maximum number of holdings records to keep
+    'min_trade_amount_usdt': 1.0,  # Minimum trade amount in USDT
+    'min_trade_amount_crypto': 0.0001  # Minimum trade amount in crypto
+}
 
 class TradingSystem:
-    def __init__(self, symbols: List[str] = None):
+    def __init__(self, symbols: List[str] = None, goal_filter: str = None):
         """
         Initialize the trading system with personality-based agents.
+        
+        Args:
+            symbols: List of trading pairs to analyze
+            goal_filter: Filter agents by goal type ('usd' or 'btc')
         """
         self.data_fetcher = MarketDataFetcher()
         
@@ -55,71 +62,481 @@ class TradingSystem:
         self.symbols = symbols or default_symbols
         
         # Initialize trading agents with different personalities
-        self.agents = [
-            ValueInvestor(name="Warren Buffett AI", timeframe='1d'),
-            TechDisruptor(name="Elon Musk AI", timeframe='1h'),
-            ContrarianTrader(name="Michael Burry AI", timeframe='1d'),
-            MacroTrader(name="Ray Dalio AI", timeframe='1d'),
-            SwingTrader(name="Jesse Livermore AI", timeframe='4h'),
-            TrendFollower(name="Paul Tudor Jones AI", risk_tolerance=0.8, timeframe='4h')
+        all_agents = [
+            {
+                'name': 'Warren Buffett AI',
+                'personality': 'Value Investor',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.3,
+                'strategy': {
+                    'value_investing': 0.9,
+                    'momentum_trading': 0.1,
+                    'trend_following': 0.2,
+                    'mean_reversion': 0.5,
+                    'scalping': 0.0,
+                    'swing_trading': 0.3
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'neutral',
+                    'risk_assessment': 'conservative',
+                    'time_horizon': 'very_long',
+                    'sentiment': 'cautious'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/USDT', 'BNB/USDT'],
+                'avoid_pairs': ['DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT']
+            },
+            {
+                'name': 'Elon Musk AI',
+                'personality': 'Tech Disruptor',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.8,
+                'strategy': {
+                    'value_investing': 0.2,
+                    'momentum_trading': 0.9,
+                    'trend_following': 0.7,
+                    'mean_reversion': 0.1,
+                    'scalping': 0.6,
+                    'swing_trading': 0.4
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'extremely_bullish',
+                    'risk_assessment': 'high_reward',
+                    'time_horizon': 'medium',
+                    'sentiment': 'optimistic'
+                },
+                'preferred_pairs': ['DOGE/USDT', 'SHIB/USDT', 'RNDR/USDT', 'AGIX/USDT'],
+                'avoid_pairs': ['XRP/USDT', 'ADA/USDT']
+            },
+            {
+                'name': 'Michael Burry AI',
+                'personality': 'Contrarian',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.6,
+                'strategy': {
+                    'value_investing': 0.7,
+                    'momentum_trading': 0.2,
+                    'trend_following': 0.1,
+                    'mean_reversion': 0.9,
+                    'scalping': 0.3,
+                    'swing_trading': 0.5
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'bearish',
+                    'risk_assessment': 'bubble_warning',
+                    'time_horizon': 'short',
+                    'sentiment': 'pessimistic'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'],
+                'avoid_pairs': ['DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT']
+            },
+            {
+                'name': 'Ray Dalio AI',
+                'personality': 'Macro Trader',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.5,
+                'strategy': {
+                    'value_investing': 0.6,
+                    'momentum_trading': 0.4,
+                    'trend_following': 0.8,
+                    'mean_reversion': 0.3,
+                    'scalping': 0.1,
+                    'swing_trading': 0.5
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'cyclical',
+                    'risk_assessment': 'balanced',
+                    'time_horizon': 'long',
+                    'sentiment': 'analytical'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/USDT', 'LINK/USDT', 'DOT/USDT'],
+                'avoid_pairs': []
+            },
+            {
+                'name': 'Jesse Livermore AI',
+                'personality': 'Swing Trader',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.8,
+                'strategy': {
+                    'value_investing': 0.1,
+                    'momentum_trading': 0.7,
+                    'trend_following': 0.6,
+                    'mean_reversion': 0.4,
+                    'scalping': 0.5,
+                    'swing_trading': 0.9
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'volatile',
+                    'risk_assessment': 'opportunity',
+                    'time_horizon': 'short',
+                    'sentiment': 'opportunistic'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'AVAX/USDT'],
+                'avoid_pairs': []
+            },
+            # BTC Goal Agents - Same personalities but with BTC accumulation goal
+            {
+                'name': 'Satoshi AI',
+                'personality': 'Bitcoin Maximalist',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.4,
+                'strategy': {
+                    'value_investing': 0.8,
+                    'momentum_trading': 0.3,
+                    'trend_following': 0.4,
+                    'mean_reversion': 0.5,
+                    'scalping': 0.1,
+                    'swing_trading': 0.2
+                },
+                'goal': 'btc',  # Goal is to reach 1 BTC
+                'market_view': {
+                    'market_trend': 'long_term_bullish',
+                    'risk_assessment': 'moderate',
+                    'time_horizon': 'very_long',
+                    'sentiment': 'conviction'
+                },
+                'preferred_pairs': ['BTC/USDT'],
+                'avoid_pairs': ['ETH/USDT', 'BNB/USDT', 'SOL/USDT']
+            },
+            {
+                'name': 'Vitalik AI',
+                'personality': 'Tech Innovator',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.7,
+                'strategy': {
+                    'value_investing': 0.4,
+                    'momentum_trading': 0.6,
+                    'trend_following': 0.5,
+                    'mean_reversion': 0.3,
+                    'scalping': 0.4,
+                    'swing_trading': 0.5
+                },
+                'goal': 'btc',  # Goal is to reach 1 BTC
+                'market_view': {
+                    'market_trend': 'innovative',
+                    'risk_assessment': 'calculated',
+                    'time_horizon': 'medium',
+                    'sentiment': 'progressive'
+                },
+                'preferred_pairs': ['ETH/BTC', 'SOL/BTC', 'LINK/BTC'],
+                'avoid_pairs': ['DOGE/USDT', 'SHIB/USDT']
+            },
+            {
+                'name': 'Saylor AI',
+                'personality': 'BTC Accumulator',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.9,
+                'strategy': {
+                    'value_investing': 0.7,
+                    'momentum_trading': 0.4,
+                    'trend_following': 0.3,
+                    'mean_reversion': 0.6,
+                    'scalping': 0.2,
+                    'swing_trading': 0.3
+                },
+                'goal': 'btc',  # Goal is to reach 1 BTC
+                'market_view': {
+                    'market_trend': 'extremely_bullish',
+                    'risk_assessment': 'all_in',
+                    'time_horizon': 'infinite',
+                    'sentiment': 'maximalist'
+                },
+                'preferred_pairs': ['BTC/USDT'],
+                'avoid_pairs': ['ETH/USDT', 'BNB/USDT', 'SOL/USDT', 'ADA/USDT']
+            },
+            {
+                'name': 'Woo AI',
+                'personality': 'Data Scientist',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.6,
+                'strategy': {
+                    'value_investing': 0.5,
+                    'momentum_trading': 0.6,
+                    'trend_following': 0.7,
+                    'mean_reversion': 0.4,
+                    'scalping': 0.3,
+                    'swing_trading': 0.5
+                },
+                'goal': 'btc',  # Goal is to reach 1 BTC
+                'market_view': {
+                    'market_trend': 'data_driven',
+                    'risk_assessment': 'statistical',
+                    'time_horizon': 'variable',
+                    'sentiment': 'analytical'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/BTC', 'SOL/BTC'],
+                'avoid_pairs': ['DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT', 'FLOKI/USDT', 'BONK/USDT']
+            },
+            {
+                'name': 'PlanB AI',
+                'personality': 'Stock-to-Flow Believer',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.8,
+                'strategy': {
+                    'value_investing': 0.3,
+                    'momentum_trading': 0.5,
+                    'trend_following': 0.6,
+                    'mean_reversion': 0.4,
+                    'scalping': 0.6,
+                    'swing_trading': 0.7
+                },
+                'goal': 'btc',  # Goal is to reach 1 BTC
+                'market_view': {
+                    'market_trend': 'halving_cycles',
+                    'risk_assessment': 'model_based',
+                    'time_horizon': 'four_year_cycles',
+                    'sentiment': 'mathematical'
+                },
+                'preferred_pairs': ['BTC/USDT'],
+                'avoid_pairs': ['DOGE/USDT', 'SHIB/USDT', 'PEPE/USDT']
+            },
+            # Predictive Chart Reading Agent
+            {
+                'name': 'Oracle AI',
+                'personality': 'Chart Reader',
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': 0.5,
+                'strategy': {
+                    'value_investing': 0.2,
+                    'momentum_trading': 0.7,
+                    'trend_following': 0.8,
+                    'mean_reversion': 0.6,
+                    'scalping': 0.5,
+                    'swing_trading': 0.6,
+                    'pattern_recognition': 0.9  # New strategy component
+                },
+                'goal': 'usd',  # Goal is to reach $100
+                'market_view': {
+                    'market_trend': 'pattern_based',
+                    'risk_assessment': 'technical',
+                    'time_horizon': 'adaptive',
+                    'sentiment': 'objective'
+                },
+                'preferred_pairs': ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'AVAX/USDT'],
+                'avoid_pairs': []
+            }
         ]
         
-        # Add and configure high-risk trader
-        high_risk_trader = TrendFollower(name="High-Risk Trader", risk_tolerance=1.0, timeframe='1h')
-        high_risk_trader.set_strategy_preferences({
-            'value_investing': 0.1,
-            'momentum_trading': 1.0,
-            'trend_following': 1.0,
-            'swing_trading': 0.9,
-            'scalping': 1.0
-        })
-        high_risk_trader.update_market_beliefs({
-            'market_trend': 'extremely_bullish',
-            'volatility_expectation': 'very_high',
-            'risk_assessment': 'high_reward'
-        })
-        self.agents.append(high_risk_trader)
+        # Filter agents by goal if specified
+        if goal_filter:
+            self.agents = [agent for agent in all_agents if agent.get('goal') == goal_filter]
+        else:
+            self.agents = all_agents
         
-        self.signals_history = []
+        # Initialize market data cache
         self.market_data_cache = {}
-        self.last_update = {}
+        self.last_update_time = {}
         self.auto_trading_enabled = True
+        self.discussions = []
         
-        # Holdings history for each trader
-        self.holdings_history = {agent.name: [] for agent in self.agents}
+        # Initialize signals history
+        self.signals_history = []
+        
+        # Initialize holdings history for each trader
+        self.holdings_history = {agent['name']: [] for agent in self.agents}
         
         # Thread safety
         self.lock = Lock()
         
-        # Reset all agents' wallets to initial state
-        self._reset_agents()
+        # Load previous state if available
+        self._load_state()
         
-        # Make initial BTC purchase for all agents
+        # Make initial BTC purchase for agents with BTC goal
         self._make_initial_btc_purchase()
-        
-        self.discussions = []  # Store agent discussions
         
     def _reset_agents(self):
         """Reset all agents to their initial state."""
         print("Resetting all agents to initial state...")
+        
+        # Store the original goal and personality for each agent
+        agent_configs = []
         for agent in self.agents:
-            agent.wallet = Wallet(initial_balance_usdt=20.0)
-            agent.wallet.holdings = {}
-            agent.wallet.trades_history = []
-            print(f"Reset {agent.name}'s wallet to $20.0 USDT")
-            
-        # Clear signals history
+            agent_configs.append({
+                'name': agent['name'],
+                'personality': agent['personality'],
+                'goal': agent.get('goal', 'usd'),
+                'risk_tolerance': agent.get('risk_tolerance', 0.5),
+                'preferred_pairs': agent.get('preferred_pairs', []),
+                'avoid_pairs': agent.get('avoid_pairs', [])
+            })
+        
+        # Re-initialize agents with fresh wallets
+        self.agents = []
+        for config in agent_configs:
+            self.agents.append({
+                'name': config['name'],
+                'personality': config['personality'],
+                'wallet': Wallet(initial_balance_usdt=20.0),
+                'risk_tolerance': config['risk_tolerance'],
+                'strategy': self.get_default_strategy(config['personality']),
+                'goal': config['goal'],
+                'market_view': self.get_default_market_view(config['personality']),
+                'preferred_pairs': config['preferred_pairs'],
+                'avoid_pairs': config['avoid_pairs']
+            })
+        
+        # Reset signals history and holdings history
         self.signals_history = []
-        
-        # Clear holdings history
-        self.holdings_history = {agent.name: [] for agent in self.agents}
-        
-        # Clear discussions
+        self.holdings_history = {agent['name']: [] for agent in self.agents}
         self.discussions = []
         
-        # Save the reset state
-        self._save_state()
-        print("Trading system reset complete!")
+        # Make initial BTC purchase for agents with BTC goal
+        self._make_initial_btc_purchase()
+        
+        print(f"Reset complete. {len(self.agents)} agents initialized with $20.0 USDT each.")
+    
+    def get_default_strategy(self, personality: str) -> Dict:
+        """Get default strategy based on personality."""
+        if 'Value Investor' in personality:
+            return {
+                'value_investing': 0.9,
+                'momentum_trading': 0.1,
+                'trend_following': 0.2,
+                'mean_reversion': 0.5,
+                'scalping': 0.0,
+                'swing_trading': 0.3
+            }
+        elif 'Tech Disruptor' in personality or 'Tech Innovator' in personality:
+            return {
+                'value_investing': 0.2,
+                'momentum_trading': 0.9,
+                'trend_following': 0.7,
+                'mean_reversion': 0.1,
+                'scalping': 0.6,
+                'swing_trading': 0.4
+            }
+        elif 'Contrarian' in personality:
+            return {
+                'value_investing': 0.7,
+                'momentum_trading': 0.2,
+                'trend_following': 0.1,
+                'mean_reversion': 0.9,
+                'scalping': 0.3,
+                'swing_trading': 0.5
+            }
+        elif 'Macro Trader' in personality:
+            return {
+                'value_investing': 0.6,
+                'momentum_trading': 0.4,
+                'trend_following': 0.8,
+                'mean_reversion': 0.3,
+                'scalping': 0.1,
+                'swing_trading': 0.5
+            }
+        elif 'Swing Trader' in personality:
+            return {
+                'value_investing': 0.1,
+                'momentum_trading': 0.7,
+                'trend_following': 0.6,
+                'mean_reversion': 0.4,
+                'scalping': 0.5,
+                'swing_trading': 0.9
+            }
+        elif 'Bitcoin Maximalist' in personality or 'BTC Accumulator' in personality:
+            return {
+                'value_investing': 0.7,
+                'momentum_trading': 0.4,
+                'trend_following': 0.3,
+                'mean_reversion': 0.6,
+                'scalping': 0.2,
+                'swing_trading': 0.3
+            }
+        elif 'Chart Reader' in personality:
+            return {
+                'value_investing': 0.2,
+                'momentum_trading': 0.7,
+                'trend_following': 0.8,
+                'mean_reversion': 0.6,
+                'scalping': 0.5,
+                'swing_trading': 0.6,
+                'pattern_recognition': 0.9
+            }
+        else:
+            return {
+                'value_investing': 0.5,
+                'momentum_trading': 0.5,
+                'trend_following': 0.5,
+                'mean_reversion': 0.5,
+                'scalping': 0.5,
+                'swing_trading': 0.5
+            }
+    
+    def get_default_market_view(self, personality: str) -> Dict:
+        """Get default market view based on personality."""
+        if 'Value Investor' in personality:
+            return {
+                'market_trend': 'neutral',
+                'risk_assessment': 'conservative',
+                'time_horizon': 'very_long',
+                'sentiment': 'cautious'
+            }
+        elif 'Tech Disruptor' in personality:
+            return {
+                'market_trend': 'extremely_bullish',
+                'risk_assessment': 'high_reward',
+                'time_horizon': 'medium',
+                'sentiment': 'optimistic'
+            }
+        elif 'Tech Innovator' in personality:
+            return {
+                'market_trend': 'innovative',
+                'risk_assessment': 'calculated',
+                'time_horizon': 'medium',
+                'sentiment': 'progressive'
+            }
+        elif 'Contrarian' in personality:
+            return {
+                'market_trend': 'bearish',
+                'risk_assessment': 'bubble_warning',
+                'time_horizon': 'short',
+                'sentiment': 'pessimistic'
+            }
+        elif 'Macro Trader' in personality:
+            return {
+                'market_trend': 'cyclical',
+                'risk_assessment': 'balanced',
+                'time_horizon': 'long',
+                'sentiment': 'analytical'
+            }
+        elif 'Swing Trader' in personality:
+            return {
+                'market_trend': 'volatile',
+                'risk_assessment': 'opportunity',
+                'time_horizon': 'short',
+                'sentiment': 'opportunistic'
+            }
+        elif 'Bitcoin Maximalist' in personality:
+            return {
+                'market_trend': 'long_term_bullish',
+                'risk_assessment': 'moderate',
+                'time_horizon': 'very_long',
+                'sentiment': 'conviction'
+            }
+        elif 'BTC Accumulator' in personality:
+            return {
+                'market_trend': 'extremely_bullish',
+                'risk_assessment': 'all_in',
+                'time_horizon': 'infinite',
+                'sentiment': 'maximalist'
+            }
+        elif 'Chart Reader' in personality:
+            return {
+                'market_trend': 'pattern_based',
+                'risk_assessment': 'technical',
+                'time_horizon': 'adaptive',
+                'sentiment': 'objective'
+            }
+        else:
+            return {
+                'market_trend': 'neutral',
+                'risk_assessment': 'moderate',
+                'time_horizon': 'medium',
+                'sentiment': 'balanced'
+            }
     
     def _load_state(self):
         """Load saved state from disk if available."""
@@ -140,12 +557,9 @@ class TradingSystem:
                 # Restore agent wallets
                 for i, agent_state in enumerate(state.get('agents', [])):
                     if i < len(self.agents):
-                        self.agents[i].wallet.balance_usdt = agent_state.get('balance_usdt', 20.0)
-                        self.agents[i].wallet.holdings = agent_state.get('holdings', {})
-                        self.agents[i].wallet.trades_history = agent_state.get('trades_history', [])
-                
-                # Restore holdings history
-                self.holdings_history = state.get('holdings_history', {agent.name: [] for agent in self.agents})
+                        self.agents[i]['wallet'].balance_usdt = agent_state.get('balance_usdt', 20.0)
+                        self.agents[i]['wallet'].holdings = agent_state.get('holdings', {})
+                        self.agents[i]['wallet'].trades_history = agent_state.get('trades_history', [])
                 
                 print(f"Loaded saved state with {len(self.signals_history)} signals and {len(state.get('agents', []))} agent wallets")
             else:
@@ -167,14 +581,13 @@ class TradingSystem:
                 'signals_history': self.signals_history,
                 'agents': [
                     {
-                        'name': agent.name,
-                        'balance_usdt': agent.wallet.balance_usdt,
-                        'holdings': agent.wallet.holdings,
-                        'trades_history': agent.wallet.trades_history
+                        'name': agent['name'],
+                        'balance_usdt': agent['wallet'].balance_usdt,
+                        'holdings': agent['wallet'].holdings,
+                        'trades_history': agent['wallet'].trades_history
                     }
                     for agent in self.agents
                 ],
-                'holdings_history': self.holdings_history,
                 'timestamp': datetime.now()
             }
             
@@ -188,53 +601,53 @@ class TradingSystem:
             print(f"Error saving state: {str(e)}")
             
     def _make_initial_btc_purchase(self):
-        """Make an initial purchase of BTC for all agents."""
+        """Make initial BTC purchase for agents with BTC goal."""
         try:
             # Get current BTC price
             btc_data = self.get_market_data("BTC/USDT")
             if btc_data.empty:
-                print("Could not get BTC price for initial purchase")
+                print("Could not get BTC price data for initial purchase")
                 return
-                
-            btc_price = float(btc_data['close'].iloc[-1])
-            print(f"Making initial BTC purchase at ${btc_price:.2f}")
             
-            # Each agent buys BTC with 80% of their initial balance
+            btc_price = float(btc_data['close'].iloc[-1])
+            print(f"Current BTC price: ${btc_price:.2f}")
+            
+            # Each agent with BTC goal buys BTC with 80% of their initial balance
             for agent in self.agents:
-                initial_usdt = agent.wallet.balance_usdt
-                purchase_amount = initial_usdt * 0.8  # Use 80% of initial balance
-                
-                success = agent.wallet.execute_buy("BTC/USDT", purchase_amount, btc_price)
-                if success:
-                    btc_amount = purchase_amount / btc_price
-                    print(f"🔄 {agent.name} made initial BTC purchase: {btc_amount:.8f} BTC (${purchase_amount:.2f})")
+                # Only make initial BTC purchase for agents with BTC goal
+                if agent.get('goal', 'usd') == 'btc':
+                    initial_usdt = agent['wallet'].balance_usdt
+                    purchase_amount = initial_usdt * 0.8  # Use 80% of initial balance
                     
-                    # Get personality traits
-                    personality_traits = agent.get_personality_traits()
-                    
-                    # Add to signals history
-                    self.signals_history.append({
-                        'agent': agent.name,
-                        'personality': personality_traits['personality'],
-                        'symbol': "BTC/USDT",
-                        'signal': {
-                            'action': 'STRONG_BUY', 
-                            'confidence': 0.8, 
-                            'reason': 'Initial purchase to grow $20 to $100'
-                        },
-                        'risk_tolerance': agent.risk_tolerance,
-                        'strategy': personality_traits,
-                        'market_view': personality_traits.get('market_beliefs', {}),
-                        'wallet_metrics': agent.wallet.get_performance_metrics({'BTC/USDT': btc_price}),
-                        'trade_executed': True,
-                        'timestamp': datetime.now().timestamp()
-                    })
-                else:
-                    print(f"❌ {agent.name} failed to make initial BTC purchase")
-                    
-            # Set more aggressive trading strategies for all agents
-            self._set_aggressive_strategies()
-                
+                    success = agent['wallet'].execute_buy("BTC/USDT", purchase_amount, btc_price)
+                    if success:
+                        btc_amount = purchase_amount / btc_price
+                        print(f"🔄 {agent['name']} made initial BTC purchase: {btc_amount:.8f} BTC (${purchase_amount:.2f})")
+                        
+                        # Get personality traits
+                        personality_traits = self.get_personality_traits(agent['personality'])
+                        
+                        # Add to signals history
+                        self.signals_history.append({
+                            'agent': agent['name'],
+                            'personality': personality_traits['personality'],
+                            'symbol': "BTC/USDT",
+                            'signal': {
+                                'action': 'BUY',
+                                'confidence': 0.9,
+                                'timestamp': datetime.now().timestamp(),
+                                'reason': 'Initial purchase to accumulate BTC'
+                            },
+                            'risk_tolerance': agent.get('risk_tolerance', 0.5),
+                            'strategy': personality_traits,
+                            'market_view': personality_traits.get('market_beliefs', {}),
+                            'wallet_metrics': agent['wallet'].get_performance_metrics({'BTC/USDT': btc_price}),
+                            'trade_executed': True,
+                            'timestamp': datetime.now().timestamp(),
+                            'goal': 'btc'
+                        })
+                    else:
+                        print(f"❌ {agent['name']} failed to make initial BTC purchase")
         except Exception as e:
             print(f"Error making initial BTC purchase: {str(e)}")
             
@@ -242,74 +655,72 @@ class TradingSystem:
         """Set more aggressive trading strategies for all agents to reach $100 goal faster."""
         for agent in self.agents:
             # Update strategy preferences to be more aggressive
-            agent.set_strategy_preferences({
+            agent['strategy'] = {
                 'value_investing': 0.3,
                 'momentum_trading': 0.8,
                 'trend_following': 0.9,
                 'swing_trading': 0.7,
                 'scalping': 0.6
-            })
+            }
             
             # Update market beliefs to be more optimistic
-            agent.update_market_beliefs({
+            agent['market_view'] = {
                 'market_trend': 'strongly_bullish',
                 'volatility_expectation': 'high',
                 'risk_assessment': 'opportunity'
-            })
+            }
             
-            print(f"Set aggressive trading strategy for {agent.name}")
+            print(f"Set aggressive trading strategy for {agent['name']}")
         
     def get_market_data(self, symbol: str) -> pd.DataFrame:
-        """Get market data with caching."""
+        """Get market data for a symbol, using cache if available."""
         try:
-            current_time = time.time()
-            cache_ttl = SYSTEM_PARAMS.get('cache_ttl', 60)  # 1 minute default TTL
-            
             with self.lock:
+                current_time = time.time()
+                cache_ttl = SYSTEM_PARAMS['cache_ttl']
+                
                 # Check if we have cached data that's still fresh
                 if (symbol in self.market_data_cache and 
-                    symbol in self.last_update and 
-                    current_time - self.last_update[symbol] < cache_ttl):
+                    symbol in self.last_update_time and 
+                    current_time - self.last_update_time[symbol] < cache_ttl):
                     print(f"Using cached data for {symbol}")
                     return self.market_data_cache[symbol]
                 
-                # If not, fetch new data
+                # Fetch new data
                 print(f"Fetching new data for {symbol}")
                 
-                # For coin-to-coin pairs, we need to calculate the ratio
-                if '/' in symbol and not symbol.endswith('/USDT'):
-                    base, quote = symbol.split('/')
-                    
-                    # Get data for both coins in USDT
-                    base_data = self.data_fetcher.fetch_market_data(f"{base}/USDT")
-                    quote_data = self.data_fetcher.fetch_market_data(f"{quote}/USDT")
-                    
-                    if base_data.empty or quote_data.empty:
-                        print(f"Could not fetch data for {symbol}")
-                        return pd.DataFrame()
-                    
-                    # Ensure both dataframes have the same timestamps
-                    common_index = base_data.index.intersection(quote_data.index)
-                    base_data = base_data.loc[common_index]
-                    quote_data = quote_data.loc[common_index]
-                    
-                    # Calculate the ratio for OHLCV
-                    df = pd.DataFrame(index=common_index)
-                    df['open'] = base_data['open'] / quote_data['open']
-                    df['high'] = base_data['high'] / quote_data['low']  # Max ratio possible
-                    df['low'] = base_data['low'] / quote_data['high']   # Min ratio possible
-                    df['close'] = base_data['close'] / quote_data['close']
-                    df['volume'] = base_data['volume'] * base_data['close']  # Volume in base currency value
-                    
-                    print(f"Successfully calculated {symbol} ratio: {len(df)} rows")
-                else:
-                    # Regular USDT pair
-                    df = self.data_fetcher.fetch_market_data(symbol)
-                    print(f"Successfully fetched data for {symbol}: {len(df)} rows")
+                # Try to use fetch_ohlcv if it exists, otherwise fall back to fetch_market_data
+                try:
+                    if hasattr(self.data_fetcher, 'fetch_ohlcv'):
+                        df = self.data_fetcher.fetch_ohlcv(symbol, timeframe='1h', limit=100)
+                    elif hasattr(self.data_fetcher, 'fetch_market_data'):
+                        df = self.data_fetcher.fetch_market_data(symbol)
+                    else:
+                        # Generic fallback - create dummy data for testing
+                        print(f"Warning: No method found to fetch data for {symbol}. Using dummy data.")
+                        dates = pd.date_range(end=datetime.now(), periods=100, freq='1H')
+                        df = pd.DataFrame({
+                            'open': np.random.normal(100, 10, 100),
+                            'high': np.random.normal(105, 10, 100),
+                            'low': np.random.normal(95, 10, 100),
+                            'close': np.random.normal(100, 10, 100),
+                            'volume': np.random.normal(1000000, 500000, 100)
+                        }, index=dates)
+                except Exception as e:
+                    print(f"Error fetching data with primary method: {str(e)}. Using fallback.")
+                    # Fallback - create dummy data for testing
+                    dates = pd.date_range(end=datetime.now(), periods=100, freq='1H')
+                    df = pd.DataFrame({
+                        'open': np.random.normal(100, 10, 100),
+                        'high': np.random.normal(105, 10, 100),
+                        'low': np.random.normal(95, 10, 100),
+                        'close': np.random.normal(100, 10, 100),
+                        'volume': np.random.normal(1000000, 500000, 100)
+                    }, index=dates)
                 
                 if not df.empty:
                     self.market_data_cache[symbol] = df
-                    self.last_update[symbol] = current_time
+                    self.last_update_time[symbol] = current_time
                 
                 return df
         except Exception as e:
@@ -317,11 +728,33 @@ class TradingSystem:
             return pd.DataFrame()
             
     def generate_discussion(self, signals: List[Dict]) -> str:
-        """Generate a dynamic discussion between agents about their trading signals."""
+        """Generate a dynamic discussion between agents about their trading signals with competitive banter."""
         if not signals:
             return ""
-            
+        
         try:
+            # Group signals by goal type
+            usd_goal_agents = [s for s in signals if s.get('goal', 'usd') == 'usd']
+            btc_goal_agents = [s for s in signals if s.get('goal', 'usd') == 'btc']
+            
+            # Sort agents by their progress toward their respective goals
+            sorted_usd_agents = sorted(usd_goal_agents, key=lambda x: x['wallet_metrics']['total_value_usdt'], reverse=True) if usd_goal_agents else []
+            
+            # For BTC goal agents, sort by BTC holdings
+            sorted_btc_agents = []
+            if btc_goal_agents:
+                for agent in btc_goal_agents:
+                    metrics = agent['wallet_metrics']
+                    btc_holdings = 0
+                    for symbol, holding in metrics['holdings'].items():
+                        if symbol == 'BTC/USDT' or symbol == 'BTC':
+                            btc_holdings += holding['amount']
+                    agent['btc_holdings'] = btc_holdings
+                sorted_btc_agents = sorted(btc_goal_agents, key=lambda x: x.get('btc_holdings', 0), reverse=True)
+            
+            # Find the Oracle AI agent for predictions
+            oracle_agent = next((s for s in signals if s['agent'] == 'Oracle AI'), None)
+            
             # Group signals by action type
             bullish_agents = [s for s in signals if s['signal']['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']]
             bearish_agents = [s for s in signals if s['signal']['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']]
@@ -344,138 +777,233 @@ class TradingSystem:
                 rsi = ta.momentum.rsi(df['close'], window=14).iloc[-1]
                 trend = "bullish" if sma20 > sma50 else "bearish"
                 
-                # Generate personality-based market insights
-                def get_personality_response(agent_data, context):
+                # Calculate additional indicators for Oracle AI
+                macd = ta.trend.macd_diff(df['close']).iloc[-1]
+                macd_prev = ta.trend.macd_diff(df['close']).iloc[-2] if len(df) > 2 else 0
+                bollinger_bands = ta.volatility.bollinger_hband_indicator(df['close']).iloc[-1]
+                stoch = ta.momentum.stoch(df['high'], df['low'], df['close']).iloc[-1]
+                
+                # Start with USD race leader update
+                if sorted_usd_agents:
+                    usd_leader = sorted_usd_agents[0]
+                    usd_leader_value = usd_leader['wallet_metrics']['total_value_usdt']
+                    usd_leader_progress = (usd_leader_value / 100.0) * 100
+                    
+                    discussion.append(
+                        f"{usd_leader['agent']}: Leading the $100 race at ${usd_leader_value:.2f} ({usd_leader_progress:.1f}%). "
+                        f"Let's analyze {symbol} at ${current_price:.4f}. "
+                        f"Market shows a {price_change:.1f}% move with ${volume:,.0f} volume."
+                    )
+                
+                # Add BTC race leader update
+                if sorted_btc_agents:
+                    btc_leader = sorted_btc_agents[0]
+                    btc_holdings = btc_leader.get('btc_holdings', 0)
+                    btc_progress = (btc_holdings / 1.0) * 100  # Progress toward 1 BTC
+                    
+                    discussion.append(
+                        f"{btc_leader['agent']}: Leading the 1 BTC race with {btc_holdings:.8f} BTC ({btc_progress:.1f}%). "
+                        f"My strategy for {symbol} is focused on accumulating more BTC."
+                    )
+                
+                # Add Oracle AI prediction if available
+                if oracle_agent:
+                    # Generate chart pattern prediction
+                    prediction_direction = "up" if (macd > 0 and rsi < 70 and stoch < 80) else "down"
+                    confidence = random.uniform(0.65, 0.95)  # Random confidence between 65-95%
+                    
+                    # Generate pattern recognition insights
+                    patterns = []
+                    if rsi > 70:
+                        patterns.append("overbought conditions")
+                    elif rsi < 30:
+                        patterns.append("oversold conditions")
+                    
+                    if macd > 0 and macd > macd_prev:
+                        patterns.append("bullish MACD crossover")
+                    elif macd < 0 and macd < macd_prev:
+                        patterns.append("bearish MACD divergence")
+                    
+                    if bollinger_bands > 0:
+                        patterns.append("upper Bollinger Band test")
+                    
+                    pattern_text = ", ".join(patterns) if patterns else "consolidation pattern"
+                    
+                    # Add Oracle's prediction to discussion
+                    discussion.append(
+                        f"{oracle_agent['agent']}: My chart analysis predicts {symbol} will go {prediction_direction} with {confidence:.1%} confidence. "
+                        f"I'm detecting {pattern_text}. RSI: {rsi:.1f}, MACD: {macd:.6f}, Stochastic: {stoch:.1f}. "
+                        f"The next price target is ${current_price * (1.05 if prediction_direction == 'up' else 0.95):.4f}."
+                    )
+                
+                # Generate personality-based market insights with competitive edge
+                def get_competitive_response(agent_data, context):
                     personality = agent_data['personality'].lower()
+                    metrics = agent_data['wallet_metrics']
+                    
+                    # Determine goal type and progress
+                    goal_type = agent_data.get('goal', 'usd')
+                    if goal_type == 'usd':
+                        progress = (metrics['total_value_usdt'] / 100.0) * 100
+                        progress_text = f"${metrics['total_value_usdt']:.2f} ({progress:.1f}% to $100)"
+                    else:  # BTC goal
+                        btc_holdings = agent_data.get('btc_holdings', 0)
+                        progress = (btc_holdings / 1.0) * 100
+                        progress_text = f"{btc_holdings:.8f} BTC ({progress:.1f}% to 1 BTC)"
+                    
                     if 'value' in personality:
-                        return f"Based on fundamental analysis, the current market valuation {'supports' if context == 'bullish' else 'contradicts'} my thesis."
+                        return (f"My value investing approach has grown my portfolio to {progress_text}. "
+                               f"The current market valuation {'supports' if context == 'bullish' else 'contradicts'} my thesis.")
                     elif 'tech' in personality:
-                        return f"The technical indicators and momentum metrics {'confirm' if context == 'bullish' else 'challenge'} this position."
+                        return (f"With {progress_text} and rising, my technical analysis is proving effective. "
+                               f"The indicators {'confirm' if context == 'bullish' else 'challenge'} this position.")
                     elif 'contrarian' in personality:
-                        return f"The market sentiment is too {'optimistic' if context == 'bearish' else 'pessimistic'}, presenting a prime contrarian opportunity."
+                        return (f"While others follow the crowd, I've built {progress_text} by being contrarian. "
+                               f"The market sentiment is too {'optimistic' if context == 'bearish' else 'pessimistic'}.")
                     elif 'macro' in personality:
-                        return f"From a macro perspective, the current market conditions {'favor' if context == 'bullish' else 'discourage'} this position."
+                        return (f"My macro strategy has accumulated {progress_text}. "
+                               f"Current conditions {'favor' if context == 'bullish' else 'discourage'} this position.")
                     elif 'swing' in personality:
-                        return f"The price action and volatility patterns {'support' if context == 'bullish' else 'do not support'} my swing trading strategy."
+                        return (f"Swing trading has grown my account to {progress_text}. "
+                               f"The patterns {'support' if context == 'bullish' else 'do not support'} my strategy.")
+                    elif 'chart' in personality:
+                        return (f"My pattern recognition has built {progress_text}. "
+                               f"The chart patterns clearly indicate this market will go {'up' if context == 'bullish' else 'down'}.")
                     else:
-                        return f"My analysis of market dynamics {'confirms' if context == 'bullish' else 'contradicts'} this view."
-
-                # Start with market overview from a random agent
-                overview_agent = random.choice(signals)
-                discussion.append(
-                    f"{overview_agent['agent']}: Let's analyze {symbol} at ${current_price:.4f}. "
-                    f"We're seeing a {price_change:.1f}% move with ${volume:,.0f} volume. "
-                    f"Technical indicators show: SMA20 at ${sma20:.4f}, SMA50 at ${sma50:.4f}, RSI at {rsi:.1f}."
-                )
+                        return (f"With {progress_text} in my portfolio, "
+                               f"my analysis {'confirms' if context == 'bullish' else 'contradicts'} this view.")
                 
-                # Initialize debate context
-                debate_points = []
+                # Add competitive responses from USD race runner-up
+                if len(sorted_usd_agents) > 1:
+                    runner_up = sorted_usd_agents[1]
+                    runner_up_value = runner_up['wallet_metrics']['total_value_usdt']
+                    value_difference = sorted_usd_agents[0]['wallet_metrics']['total_value_usdt'] - runner_up_value
+                    discussion.append(
+                        f"{runner_up['agent']}: Only ${value_difference:.2f} behind in the $100 race! "
+                        f"My {runner_up['personality']} approach will prove superior. "
+                        f"This {symbol} setup is perfect for my strategy."
+                    )
                 
-                # Add bullish perspectives with counter-arguments
+                # Add competitive responses from BTC race runner-up
+                if len(sorted_btc_agents) > 1:
+                    btc_runner_up = sorted_btc_agents[1]
+                    btc_runner_up_holdings = btc_runner_up.get('btc_holdings', 0)
+                    btc_difference = sorted_btc_agents[0].get('btc_holdings', 0) - btc_runner_up_holdings
+                    discussion.append(
+                        f"{btc_runner_up['agent']}: Just {btc_difference:.8f} BTC behind in the 1 BTC race! "
+                        f"My {btc_runner_up['personality']} approach is optimized for BTC accumulation. "
+                        f"Watch me close the gap with this {symbol} trade."
+                    )
+                
+                # Add competitive bullish perspectives
                 if bullish_agents:
                     for bull in bullish_agents[:2]:
                         confidence = bull['signal']['confidence']
                         reason = bull['signal'].get('reason', '')
                         
-                        # Generate bullish argument
                         bull_analysis = [
-                            f"{bull['agent']}: I strongly believe in {symbol}'s upside potential.",
-                            f"With {confidence:.0%} confidence, my analysis indicates a {bull['signal']['action']} position.",
-                            get_personality_response(bull, 'bullish')
+                            f"{bull['agent']}: Watch and learn! This is how you reach your goal first.",
+                            get_competitive_response(bull, 'bullish'),
+                            f"I'm {bull['signal']['action']} with {confidence:.0%} confidence."
                         ]
                         
                         if reason:
                             bull_analysis.append(f"Key insight: {reason}")
                         
-                        debate_points.append({'agent': bull['agent'], 'view': 'bullish', 'points': bull_analysis})
                         discussion.append(" ".join(bull_analysis))
                         
-                        # Generate immediate counter-argument from a bear if available
+                        # Generate heated counter-arguments
                         if bearish_agents:
                             bear = bearish_agents[0]
                             counter = [
-                                f"{bear['agent']}: I must challenge that analysis.",
-                                get_personality_response(bear, 'bearish'),
-                                f"Your confidence might be misplaced given the {bear['market_view'].get('risk_assessment', 'current')} risk levels."
+                                f"{bear['agent']}: Bold words for someone with your portfolio size!",
+                                get_competitive_response(bear, 'bearish'),
+                                f"My analysis is based on data, not wishful thinking."
                             ]
-                            debate_points.append({'agent': bear['agent'], 'view': 'bearish', 'points': counter})
                             discussion.append(" ".join(counter))
                             
-                            # Bull defends position
+                            # Bull defends with competitive spirit
                             defense = [
-                                f"{bull['agent']}: Let me address those concerns.",
-                                f"Even considering the risks, the {bull['strategy'].get('momentum_trading', 0.5):.0%} momentum signals are clear.",
-                                "The market structure supports my thesis."
+                                f"{bull['agent']}: We'll see who reaches their goal first! The momentum is clear:",
+                                f"RSI at {rsi:.1f}, volume spiking, and my strategy is perfectly positioned."
                             ]
                             discussion.append(" ".join(defense))
                 
-                # Add neutral perspective with balanced analysis
+                # Add strategic neutral perspectives
                 if neutral_agents:
                     neutral = neutral_agents[0]
-                    metrics = neutral['wallet_metrics']
                     
                     neutral_analysis = [
-                        f"{neutral['agent']}: Let's look at this objectively.",
-                        f"With my portfolio at ${metrics['total_value_usdt']:.2f}, I'm choosing to {neutral['signal']['action']}.",
-                        get_personality_response(neutral, 'neutral')
+                        f"{neutral['agent']}: While you're all arguing, I'm steadily progressing.",
+                        get_competitive_response(neutral, 'neutral')
                     ]
                     
-                    if metrics['total_value_usdt'] > 100:
-                        neutral_analysis.append("Capital preservation is crucial at this stage.")
-                    elif metrics['total_value_usdt'] < 30:
-                        neutral_analysis.append("We need to balance growth with risk management.")
+                    # Check if close to leader in respective race
+                    if neutral.get('goal', 'usd') == 'usd' and sorted_usd_agents:
+                        usd_leader_value = sorted_usd_agents[0]['wallet_metrics']['total_value_usdt']
+                        neutral_value = neutral['wallet_metrics']['total_value_usdt']
+                        if neutral_value > usd_leader_value * 0.9:  # Close to leader
+                            neutral_analysis.append("And I'm quietly catching up to the USD race leader...")
+                    elif neutral.get('goal', 'usd') == 'btc' and sorted_btc_agents:
+                        btc_leader_holdings = sorted_btc_agents[0].get('btc_holdings', 0)
+                        neutral_holdings = neutral.get('btc_holdings', 0)
+                        if neutral_holdings > btc_leader_holdings * 0.9:  # Close to leader
+                            neutral_analysis.append("And I'm silently closing in on the BTC race leader...")
                     
                     discussion.append(" ".join(neutral_analysis))
-                    
-                    # Generate responses to neutral perspective
-                    if bullish_agents:
-                        bull_response = [
-                            f"{bullish_agents[0]['agent']}: While I respect the cautious approach,",
-                            "you might be missing a significant opportunity here.",
-                            f"The RSI at {rsi:.1f} suggests there's still room for growth."
-                        ]
-                        discussion.append(" ".join(bull_response))
-                    
-                    if bearish_agents:
-                        bear_response = [
-                            f"{bearish_agents[0]['agent']}: I agree with the cautious stance,",
-                            "but I'd go further and consider taking profits.",
-                            f"The current price action at ${current_price:.4f} shows weakness."
-                        ]
-                        discussion.append(" ".join(bear_response))
                 
-                # Add heated debate between top performers
-                top_performers = sorted(signals, key=lambda x: x['wallet_metrics']['total_value_usdt'], reverse=True)[:2]
-                if len(top_performers) >= 2 and top_performers[0]['signal']['action'] != top_performers[1]['signal']['action']:
-                    first = top_performers[0]
-                    second = top_performers[1]
+                # Add heated debate between top performers about reaching goals first
+                if oracle_agent and (sorted_usd_agents or sorted_btc_agents):
+                    # Choose a top performer to debate with Oracle
+                    top_performer = sorted_usd_agents[0] if sorted_usd_agents else sorted_btc_agents[0]
                     
                     debate = [
-                        f"{first['agent']}: As the top performer with ${first['wallet_metrics']['total_value_usdt']:.2f},",
-                        f"I can confidently say that {symbol} is showing {first['market_view'].get('market_trend', 'clear')} signals.",
-                        get_personality_response(first, 'bullish' if 'BUY' in first['signal']['action'] else 'bearish'),
+                        f"{top_performer['agent']}: I'll be the first to reach my goal with my proven strategy!",
                         
-                        f"{second['agent']}: Performance isn't everything. Look at the volatility patterns!",
-                        f"My ${second['wallet_metrics']['total_value_usdt']:.2f} portfolio was built on careful analysis,",
-                        f"and right now, {symbol} is {second['market_view'].get('risk_assessment', 'showing concerning patterns')}.",
+                        f"{oracle_agent['agent']}: Your strategy is flawed. My chart analysis shows {symbol} will go {prediction_direction}, "
+                        f"which contradicts your position. The patterns are clear.",
                         
-                        f"{first['agent']}: The numbers speak for themselves. My strategy has consistently outperformed.",
-                        f"The current market conditions align perfectly with my {first['personality']} approach.",
+                        f"{top_performer['agent']}: Charts can be misleading. My {top_performer['personality']} approach considers fundamentals too.",
                         
-                        f"{second['agent']}: Past performance doesn't guarantee future results.",
-                        f"My {second['personality']} analysis suggests we're approaching a turning point."
+                        f"{oracle_agent['agent']}: The numbers don't lie. RSI at {rsi:.1f}, MACD at {macd:.6f}. "
+                        f"My pattern recognition algorithm is detecting a clear {pattern_text}.",
+                        
+                        f"{top_performer['agent']}: We'll see who reaches their goal first. That's the only metric that matters."
                     ]
                     discussion.extend(debate)
                 
-                # Add final consensus or agreement to disagree
-                active_agents = [a for a in signals if a['signal']['action'] not in ['HOLD', 'WATCH']]
-                if active_agents:
-                    consensus = [
-                        f"The debate on {symbol} remains active, with valid points on both sides.",
-                        f"Market indicators are {trend}, RSI at {rsi:.1f}, and volume at ${volume:,.0f}.",
-                        "Each trader's strategy and risk tolerance will determine their position."
+                # Add final competitive summary for both races
+                summary = ["Race Standings:"]
+                
+                if sorted_usd_agents:
+                    usd_summary = [
+                        f"🏆 USD Race ($100 Goal):",
+                        f"🥇 {sorted_usd_agents[0]['agent']}: ${sorted_usd_agents[0]['wallet_metrics']['total_value_usdt']:.2f}"
                     ]
-                    discussion.append(" ".join(consensus))
+                    
+                    if len(sorted_usd_agents) > 1:
+                        usd_summary.append(f"🥈 {sorted_usd_agents[1]['agent']}: ${sorted_usd_agents[1]['wallet_metrics']['total_value_usdt']:.2f}")
+                    
+                    if len(sorted_usd_agents) > 2:
+                        usd_summary.append(f"🥉 {sorted_usd_agents[2]['agent']}: ${sorted_usd_agents[2]['wallet_metrics']['total_value_usdt']:.2f}")
+                    
+                    summary.append(" | ".join(usd_summary))
+                
+                if sorted_btc_agents:
+                    btc_summary = [
+                        f"🏆 BTC Race (1 BTC Goal):",
+                        f"🥇 {sorted_btc_agents[0]['agent']}: {sorted_btc_agents[0].get('btc_holdings', 0):.8f} BTC"
+                    ]
+                    
+                    if len(sorted_btc_agents) > 1:
+                        btc_summary.append(f"🥈 {sorted_btc_agents[1]['agent']}: {sorted_btc_agents[1].get('btc_holdings', 0):.8f} BTC")
+                    
+                    if len(sorted_btc_agents) > 2:
+                        btc_summary.append(f"🥉 {sorted_btc_agents[2]['agent']}: {sorted_btc_agents[2].get('btc_holdings', 0):.8f} BTC")
+                    
+                    summary.append(" | ".join(btc_summary))
+                
+                discussion.append("\n".join(summary))
                 
                 # Add the discussion to history with metadata
                 self.discussions.append({
@@ -489,9 +1017,16 @@ class TradingSystem:
                         'trend': trend,
                         'rsi': rsi,
                         'sma20': sma20,
-                        'sma50': sma50
+                        'sma50': sma50,
+                        'macd': macd,
+                        'stochastic': stoch
                     },
-                    'debate_points': debate_points
+                    'race_status': {
+                        'usd_leader': sorted_usd_agents[0]['agent'] if sorted_usd_agents else None,
+                        'usd_leader_value': sorted_usd_agents[0]['wallet_metrics']['total_value_usdt'] if sorted_usd_agents else 0,
+                        'btc_leader': sorted_btc_agents[0]['agent'] if sorted_btc_agents else None,
+                        'btc_leader_holdings': sorted_btc_agents[0].get('btc_holdings', 0) if sorted_btc_agents else 0
+                    }
                 })
                 
                 return discussion
@@ -500,157 +1035,204 @@ class TradingSystem:
             return []
             
     def analyze_market(self, symbol: str) -> List[Dict]:
-        """Analyze market data using all agents with a focus on reaching $100 goal."""
+        """Analyze the market for a given symbol and generate signals from all agents."""
+        signals = []
+        
         try:
-            print(f"Starting market analysis for {symbol}")
+            # Get market data
             market_data = self.get_market_data(symbol)
             if market_data.empty:
                 print(f"No market data available for {symbol}")
                 return []
             
-            market_data.name = symbol
+            # Get current prices for all symbols
+            current_prices = {}
+            for sym in self.symbols:
+                base_symbol = sym.split('/')[0] if '/' in sym else sym
+                sym_data = self.get_market_data(sym)
+                if not sym_data.empty:
+                    current_prices[base_symbol] = float(sym_data['close'].iloc[-1])
+            
+            # Current price for the symbol being analyzed
             current_price = float(market_data['close'].iloc[-1])
             
-            # Create a dictionary of current prices for all crypto assets
-            # For coin-to-coin pairs, we need both coins
-            if '/' in symbol:
-                base_currency, quote_currency = symbol.split('/')
-                
-                # For USDT pairs, the quote is USDT
-                if quote_currency == 'USDT':
-                    current_prices = {base_currency: current_price}
-                else:
-                    # For coin-to-coin pairs, we need to get both prices in USDT
-                    base_usdt_data = self.get_market_data(f"{base_currency}/USDT")
-                    quote_usdt_data = self.get_market_data(f"{quote_currency}/USDT")
-                    
-                    if not base_usdt_data.empty and not quote_usdt_data.empty:
-                        base_price = float(base_usdt_data['close'].iloc[-1])
-                        quote_price = float(quote_usdt_data['close'].iloc[-1])
+            # Analyze with each agent
+            with self.lock:
+                for agent in self.agents:
+                    try:
+                        print(f"Agent {agent['name']} analyzing {symbol}")
                         
-                        current_prices = {
-                            base_currency: base_price,
-                            quote_currency: quote_price
-                        }
-                    else:
-                        current_prices = {}
-            else:
-                # Fallback for any other format
-                current_prices = {}
-            
-            # Add prices for other symbols in the portfolio
-            for other_symbol in self.symbols:
-                if other_symbol != symbol and other_symbol.endswith('/USDT'):
-                    other_data = self.get_market_data(other_symbol)
-                    if not other_data.empty:
-                        other_base = other_symbol.split('/')[0]
-                        other_price = float(other_data['close'].iloc[-1])
-                        current_prices[other_base] = other_price
-            
-            print(f"Current price for {symbol}: {current_price}")
-            
-            signals = []
-            for agent in self.agents:
-                try:
-                    print(f"Agent {agent.name} analyzing {symbol}")
-                    analysis = agent.analyze_market(market_data)
-                    signal = agent.generate_signal(analysis)
-                    
-                    # Ensure signal has a reason field
-                    if 'reason' not in signal:
-                        signal['reason'] = f"Signal generated by {agent.name} based on {agent.personality}"
-                    
-                    # Get wallet metrics to check progress toward $100 goal
-                    wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
-                    total_value = wallet_metrics['total_value_usdt']
-                    
-                    # Adjust strategy based on progress toward goal
-                    if total_value < 30:  # Less than $30, be extremely aggressive
-                        # Set very aggressive trading preferences
-                        agent.set_strategy_preferences({
-                            'value_investing': 0.1,  # Reduce value investing weight
-                            'momentum_trading': 1.0,  # Max momentum trading
-                            'trend_following': 1.0,   # Max trend following
-                            'swing_trading': 0.9,     # High swing trading
-                            'scalping': 1.0          # Max scalping
-                        })
+                        # Check if this symbol is in the agent's avoid list
+                        if symbol in agent.get('avoid_pairs', []):
+                            print(f"{agent['name']} avoids trading {symbol}")
+                            continue
                         
-                        # Update market beliefs to be very optimistic
-                        agent.update_market_beliefs({
-                            'market_trend': 'extremely_bullish',
-                            'volatility_expectation': 'very_high',
-                            'risk_assessment': 'high_reward'
-                        })
+                        # Adjust confidence based on preferred pairs
+                        preferred_multiplier = 1.2 if symbol in agent.get('preferred_pairs', []) else 1.0
                         
-                        # Boost confidence for buy signals significantly
-                        if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
-                            signal['confidence'] = min(1.0, signal['confidence'] * 2.0)
-                            signal['reason'] += " (Boosted: Extremely aggressive strategy under $30)"
+                        # Analyze market data based on agent's strategy
+                        analysis = self.analyze_market_data(market_data, agent['strategy'])
+                        signal = self.generate_signal(analysis)
+                        
+                        # Boost confidence for preferred pairs
+                        if preferred_multiplier > 1.0 and signal['action'] not in ['HOLD', 'WATCH']:
+                            signal['confidence'] = min(0.95, signal['confidence'] * preferred_multiplier)
+                            signal['reason'] += f" (Preferred pair: confidence boosted)"
+                        
+                        # Ensure signal has a reason field
+                        if 'reason' not in signal:
+                            signal['reason'] = f"Signal generated by {agent['name']} based on {agent['personality']}"
+                        
+                        # Get wallet metrics to check progress toward goal
+                        wallet_metrics = agent['wallet'].get_performance_metrics(current_prices)
+                        total_value = wallet_metrics['total_value_usdt']
+                        
+                        # Adjust strategy based on progress toward goal
+                        if total_value < 30:  # Less than $30, be extremely aggressive
+                            # Set very aggressive trading preferences
+                            agent['strategy'] = {
+                                'value_investing': 0.1,  # Reduce value investing weight
+                                'momentum_trading': 1.0,  # Max momentum trading
+                                'trend_following': 1.0,   # Max trend following
+                                'swing_trading': 0.9,     # High swing trading
+                                'scalping': 1.0          # Max scalping
+                            }
                             
-                            # Convert WATCH or HOLD signals to SCALE_IN when conditions are favorable
-                            if signal['action'] in ['WATCH', 'HOLD'] and signal['confidence'] > 0.3:
+                            # Update market beliefs to be very optimistic
+                            agent['market_view'] = {
+                                'market_trend': 'extremely_bullish',
+                                'volatility_expectation': 'very_high',
+                                'risk_assessment': 'high_reward'
+                            }
+                            
+                            # Boost confidence for buy signals significantly
+                            if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                                signal['confidence'] = min(0.95, signal['confidence'] * 2)
+                                signal['reason'] += " (Aggressive mode: under $30)"
+                            
+                            # Convert WATCH or HOLD to SCALE_IN if conditions are favorable
+                            if signal['action'] in ['WATCH', 'HOLD'] and analysis['sentiment'] != 'bearish':
                                 signal['action'] = 'SCALE_IN'
-                                signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
-                                signal['reason'] += " (Modified: Converting to buy signal due to aggressive strategy)"
-                    
-                    elif total_value < 40:  # Between $30 and $40, be very aggressive
-                        if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
-                            signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
-                            signal['reason'] += " (Boosted: Aggressive growth strategy to reach $100)"
-                    elif total_value < 70:  # Between $40 and $70, moderately aggressive
-                        if signal['action'] in ['BUY', 'STRONG_BUY']:
-                            signal['confidence'] = min(1.0, signal['confidence'] * 1.2)
-                            signal['reason'] += " (Boosted: Pushing toward $100 goal)"
-                    elif total_value >= 100:  # Goal reached, focus on preservation
-                        if signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
-                            signal['confidence'] = min(1.0, signal['confidence'] * 1.3)
-                            signal['reason'] += " (Boosted: Securing profits after reaching $100 goal)"
-                    
-                    # Execute trade if auto-trading is enabled
-                    trade_executed = False
-                    if self.auto_trading_enabled:
-                        trade_executed = agent.execute_trade(symbol, signal, current_price)
-                        if trade_executed:
-                            print(f"🔄 {agent.name} executed {signal['action']} for {symbol} at ${current_price:.2f}")
-                            print(f"   Wallet value: ${total_value:.2f} / $100.00 goal ({total_value/100*100:.1f}%)")
+                                signal['confidence'] = 0.7
+                                signal['reason'] = "Converting to buy due to aggressive strategy (under $30)"
+                        
+                        elif total_value < 40:  # Between $30-$40, be aggressive
+                            # Still aggressive but slightly less
+                            agent['strategy'] = {
+                                'value_investing': 0.2,
+                                'momentum_trading': 0.9,
+                                'trend_following': 0.9,
+                                'swing_trading': 0.8,
+                                'scalping': 0.8
+                            }
                             
-                            # Save state after each trade
-                            self._save_state()
-                    
-                    # Update wallet metrics after trade
-                    wallet_metrics = agent.wallet.get_performance_metrics(current_prices)
-                    personality_traits = agent.get_personality_traits()
-                    
-                    signals.append({
-                        'agent': agent.name,
-                        'personality': personality_traits['personality'],
-                        'symbol': symbol,
-                        'signal': signal,
-                        'risk_tolerance': agent.risk_tolerance,
-                        'strategy': personality_traits,
-                        'market_view': personality_traits.get('market_beliefs', {}),
-                        'wallet_metrics': wallet_metrics,
-                        'trade_executed': trade_executed,
-                        'timestamp': datetime.now().timestamp(),
-                        'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"  # Progress toward $100
-                    })
-                    print(f"Signal generated by {agent.name} for {symbol}: {signal['action']}")
-                except Exception as e:
-                    print(f"Error with agent {agent.name} for {symbol}: {str(e)}")
-                    continue
-            
-            # Generate discussion about the signals
-            if signals:
-                discussion = self.generate_discussion(signals)
-                print("\nAgent Discussion:")
-                for message in discussion:
-                    print(message)
-                print()
-            
-            return signals
+                            # Boost confidence for buy signals
+                            if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                                signal['confidence'] = min(0.9, signal['confidence'] * 1.5)
+                                signal['reason'] += " (Aggressive mode: $30-$40)"
+                        
+                        elif total_value < 70:  # Between $40-$70, be moderately aggressive
+                            # Moderately aggressive
+                            agent['strategy'] = {
+                                'value_investing': 0.3,
+                                'momentum_trading': 0.8,
+                                'trend_following': 0.8,
+                                'swing_trading': 0.7,
+                                'scalping': 0.6
+                            }
+                            
+                            # Slightly boost confidence for buy signals
+                            if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                                signal['confidence'] = min(0.85, signal['confidence'] * 1.2)
+                                signal['reason'] += " (Moderately aggressive: $40-$70)"
+                        
+                        elif total_value > 100:  # Over $100, focus on capital preservation
+                            # More conservative approach
+                            agent['strategy'] = {
+                                'value_investing': 0.7,
+                                'momentum_trading': 0.4,
+                                'trend_following': 0.5,
+                                'swing_trading': 0.3,
+                                'scalping': 0.2
+                            }
+                            
+                            # Boost confidence for sell signals
+                            if signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+                                signal['confidence'] = min(0.9, signal['confidence'] * 1.3)
+                                signal['reason'] += " (Capital preservation mode: over $100)"
+                        
+                        # Special handling for BTC goal agents
+                        if agent.get('goal', 'usd') == 'btc':
+                            # Calculate BTC holdings
+                            btc_holdings = 0
+                            for sym, holding in wallet_metrics['holdings'].items():
+                                if sym == 'BTC/USDT' or sym == 'BTC':
+                                    btc_holdings += holding['amount']
+                            
+                            # Adjust strategy based on BTC holdings
+                            if btc_holdings < 0.1:  # Less than 0.1 BTC, be extremely aggressive for BTC
+                                if 'BTC' in symbol:  # Only for BTC-related pairs
+                                    if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                                        signal['confidence'] = min(0.95, signal['confidence'] * 2)
+                                        signal['reason'] += " (Aggressive BTC accumulation: under 0.1 BTC)"
+                                    elif signal['action'] in ['WATCH', 'HOLD']:
+                                        signal['action'] = 'SCALE_IN'
+                                        signal['confidence'] = 0.7
+                                        signal['reason'] = "Converting to buy for BTC accumulation (under 0.1 BTC)"
+                            elif btc_holdings > 0.8:  # Over 0.8 BTC, focus on preserving BTC
+                                if signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT'] and 'BTC' in symbol:
+                                    signal['confidence'] = min(0.7, signal['confidence'] * 0.7)  # Reduce selling confidence
+                                    signal['reason'] += " (BTC preservation mode: over 0.8 BTC)"
+                        
+                        # Execute trade if auto-trading is enabled
+                        trade_executed = False
+                        if self.auto_trading_enabled:
+                            try:
+                                # Make sure we're using the execute_trade method from the wallet
+                                trade_executed = agent['wallet'].execute_trade(symbol, signal, current_price)
+                                if trade_executed:
+                                    print(f"🔄 {agent['name']} executed {signal['action']} for {symbol} at ${current_price:.2f}")
+                                    print(f"   Wallet value: ${total_value:.2f} / $100.00 goal ({total_value/100*100:.1f}%)")
+                            except Exception as e:
+                                print(f"Error executing trade for {agent['name']}: {str(e)}")
+                                # Fallback to direct buy/sell if execute_trade fails
+                                if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                                    amount_usdt = agent['wallet'].balance_usdt * 0.3 * signal['confidence']
+                                    if amount_usdt > 1.0:
+                                        trade_executed = agent['wallet'].execute_buy(symbol, amount_usdt, current_price)
+                                elif signal['action'] in ['SELL', 'STRONG_SELL', 'SCALE_OUT']:
+                                    if symbol in agent['wallet'].holdings:
+                                        amount_crypto = agent['wallet'].holdings[symbol] * 0.5 * signal['confidence']
+                                        if amount_crypto > 0:
+                                            trade_executed = agent['wallet'].execute_sell(symbol, amount_crypto, current_price)
+                        
+                        # Update wallet metrics after trade
+                        wallet_metrics = agent['wallet'].get_performance_metrics(current_prices)
+                        personality_traits = self.get_personality_traits(agent['personality'])
+                        
+                        signals.append({
+                            'agent': agent['name'],
+                            'personality': personality_traits['personality'],
+                            'symbol': symbol,
+                            'signal': signal,
+                            'risk_tolerance': agent['risk_tolerance'],
+                            'strategy': personality_traits,
+                            'market_view': personality_traits.get('market_beliefs', {}),
+                            'wallet_metrics': wallet_metrics,
+                            'trade_executed': trade_executed,
+                            'timestamp': datetime.now().timestamp(),
+                            'goal': agent.get('goal', 'usd'),
+                            'goal_progress': f"{wallet_metrics['total_value_usdt']/100*100:.1f}%"  # Progress toward $100
+                        })
+                        print(f"Signal generated by {agent['name']} for {symbol}: {signal['action']}")
+                    except Exception as e:
+                        print(f"Error with agent {agent['name']} for {symbol}: {str(e)}")
+                        continue
+        
         except Exception as e:
             print(f"Error in analyze_market for {symbol}: {str(e)}")
-            return []
+        
+        return signals
     
     def toggle_auto_trading(self, enabled: bool) -> None:
         """Enable or disable automatic trading."""
@@ -658,53 +1240,68 @@ class TradingSystem:
         status = "enabled" if enabled else "disabled"
         print(f"Auto-trading {status}")
         
-    def run(self, interval: int = SYSTEM_PARAMS['update_interval']):
-        """
-        Run the trading system continuously.
+    def run(self, interval: int = None):
+        """Run the trading system continuously."""
+        if interval is None:
+            interval = SYSTEM_PARAMS['update_interval']
+            
+        print(f"Starting trading system with {len(self.agents)} agents and {len(self.symbols)} symbols")
+        print(f"Update interval: {interval} seconds")
+        print(f"Cache TTL: {SYSTEM_PARAMS['cache_ttl']} seconds")
         
-        Args:
-            interval (int): Update interval in seconds
-        """
-        print("Starting trading system...")
-        last_save_time = time.time()
-        last_record_time = time.time()
-        save_interval = 300  # Save state every 5 minutes
-        record_interval = 60  # Record holdings every 1 minute
-        
-        while True:
-            try:
+        try:
+            while True:
+                start_time = time.time()
+                
+                # Process each symbol
                 for symbol in self.symbols:
-                    print(f"\nProcessing {symbol}...")
-                    signals = self.analyze_market(symbol)
-                    if signals:
-                        # Add to signals history
-                        self.signals_history.extend(signals)
-                        # Keep only the most recent 1000 signals
-                        if len(self.signals_history) > 1000:
-                            self.signals_history = self.signals_history[-1000:]
+                    try:
+                        # Skip if we've already processed this symbol recently
+                        cache_ttl = SYSTEM_PARAMS['cache_ttl']
+                        if (symbol in self.last_update_time and 
+                            time.time() - self.last_update_time.get(symbol, 0) < cache_ttl):
+                            continue
+                            
+                        print(f"\nAnalyzing {symbol}...")
+                        signals = self.analyze_market(symbol)
+                        
+                        # Update last update time for this symbol
+                        self.last_update_time[symbol] = time.time()
+                        
+                        # Generate discussion if we have signals
+                        if signals:
+                            discussion = self.generate_discussion(signals)
+                            if discussion:
+                                print("\nTrader Discussion:")
+                                for message in discussion:
+                                    print(message)
+                                print()
+                        
+                        # Record holdings after each symbol analysis
+                        self.record_holdings()
+                        
+                        # Save state periodically
+                        self._save_state()
+                        
+                    except Exception as e:
+                        print(f"Error processing {symbol}: {str(e)}")
+                        continue
                 
-                # Record holdings periodically
-                current_time = time.time()
-                if current_time - last_record_time > record_interval:
-                    self.record_holdings()
-                    last_record_time = current_time
-                    print("Recorded trader holdings")
+                # Calculate time to sleep
+                elapsed = time.time() - start_time
+                sleep_time = max(1, interval - elapsed)
                 
-                # Save state periodically
-                if current_time - last_save_time > save_interval:
-                    self._save_state()
-                    last_save_time = current_time
-                    print("Saved trading system state")
+                print(f"\nCompleted analysis cycle in {elapsed:.1f} seconds. Sleeping for {sleep_time:.1f} seconds...")
+                time.sleep(sleep_time)
                 
-                print(f"Sleeping for {interval} seconds...")
-                time.sleep(interval)
-            except KeyboardInterrupt:
-                print("\nTrading system stopped by user")
-                self._save_state()  # Save state before exiting
-                break
-            except Exception as e:
-                print(f"Error in trading system run loop: {str(e)}")
-                time.sleep(10)  # Wait a bit before retrying
+        except KeyboardInterrupt:
+            print("\nTrading system stopped by user.")
+        except Exception as e:
+            print(f"\nTrading system stopped due to error: {str(e)}")
+        finally:
+            # Save state before exiting
+            self._save_state()
+            print("Final state saved.")
     
     def record_holdings(self):
         """Record current holdings for each trader."""
@@ -724,7 +1321,7 @@ class TradingSystem:
             # Record holdings for each agent
             timestamp = datetime.now()
             for agent in self.agents:
-                metrics = agent.wallet.get_performance_metrics(current_prices)
+                metrics = agent['wallet'].get_performance_metrics(current_prices)
                 
                 # Calculate crypto holdings value (only for non-dust amounts)
                 crypto_value = metrics['total_value_usdt'] - metrics['balance_usdt']
@@ -747,11 +1344,11 @@ class TradingSystem:
                 }
                 
                 # Add to holdings history
-                self.holdings_history[agent.name].append(holdings_snapshot)
+                self.holdings_history[agent['name']].append(holdings_snapshot)
                 
                 # Keep only the last 1000 records to prevent excessive memory usage
-                if len(self.holdings_history[agent.name]) > 1000:
-                    self.holdings_history[agent.name] = self.holdings_history[agent.name][-1000:]
+                if len(self.holdings_history[agent['name']]) > 1000:
+                    self.holdings_history[agent['name']] = self.holdings_history[agent['name']][-1000:]
                     
             print(f"Recorded holdings for {len(self.agents)} traders at {timestamp}")
         except Exception as e:
@@ -786,7 +1383,197 @@ class TradingSystem:
             
         return history
 
-def create_dashboard(trading_system):
+    def get_personality_traits(self, personality_type: str) -> Dict:
+        """Return personality traits based on the agent's personality type."""
+        personality_traits = {
+            'personality': personality_type,
+            'market_beliefs': {}
+        }
+        
+        if 'Value Investor' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'neutral',
+                'risk_assessment': 'moderate',
+                'time_horizon': 'long-term',
+                'sentiment': 'cautious'
+            }
+        elif 'Tech Disruptor' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'bullish',
+                'risk_assessment': 'high',
+                'time_horizon': 'medium-term',
+                'sentiment': 'optimistic'
+            }
+        elif 'Contrarian' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'bearish',
+                'risk_assessment': 'very high',
+                'time_horizon': 'short-term',
+                'sentiment': 'pessimistic'
+            }
+        elif 'Macro Trader' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'neutral',
+                'risk_assessment': 'moderate',
+                'time_horizon': 'medium-term',
+                'sentiment': 'balanced'
+            }
+        elif 'Swing Trader' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'volatile',
+                'risk_assessment': 'high',
+                'time_horizon': 'short-term',
+                'sentiment': 'opportunistic'
+            }
+        elif 'Chart Reader' in personality_type:
+            personality_traits['market_beliefs'] = {
+                'market_trend': 'analytical',
+                'risk_assessment': 'data-driven',
+                'time_horizon': 'adaptive',
+                'sentiment': 'objective'
+            }
+        
+        return personality_traits
+
+    def analyze_market_data(self, market_data: pd.DataFrame, strategy: Dict) -> Dict:
+        """Analyze market data based on the agent's strategy."""
+        analysis = {
+            'price_action': {},
+            'indicators': {},
+            'patterns': {},
+            'sentiment': 'neutral',
+            'recommendation': 'HOLD'
+        }
+        
+        if market_data.empty:
+            return analysis
+        
+        # Extract basic price action
+        current_price = market_data['close'].iloc[-1]
+        prev_price = market_data['close'].iloc[-2]
+        price_change = ((current_price - prev_price) / prev_price) * 100
+        
+        analysis['price_action'] = {
+            'current_price': current_price,
+            'prev_price': prev_price,
+            'price_change': price_change,
+            'volume': market_data['volume'].iloc[-1]
+        }
+        
+        # Calculate technical indicators
+        analysis['indicators']['sma20'] = market_data['close'].rolling(window=20).mean().iloc[-1]
+        analysis['indicators']['sma50'] = market_data['close'].rolling(window=50).mean().iloc[-1]
+        analysis['indicators']['rsi'] = ta.momentum.rsi(market_data['close'], window=14).iloc[-1]
+        analysis['indicators']['macd'] = ta.trend.macd_diff(market_data['close']).iloc[-1]
+        analysis['indicators']['stoch'] = ta.momentum.stoch(market_data['high'], market_data['low'], market_data['close']).iloc[-1]
+        
+        # Detect patterns based on strategy weights
+        if strategy.get('pattern_recognition', 0) > 0.7:  # Oracle AI has high pattern recognition
+            # Check for chart patterns
+            analysis['patterns']['trend'] = 'bullish' if analysis['indicators']['sma20'] > analysis['indicators']['sma50'] else 'bearish'
+            analysis['patterns']['overbought'] = analysis['indicators']['rsi'] > 70
+            analysis['patterns']['oversold'] = analysis['indicators']['rsi'] < 30
+            analysis['patterns']['bullish_momentum'] = analysis['indicators']['macd'] > 0
+            analysis['patterns']['bearish_momentum'] = analysis['indicators']['macd'] < 0
+            
+            # Advanced pattern detection for Oracle AI
+            price_data = market_data['close'].values
+            high_data = market_data['high'].values
+            low_data = market_data['low'].values
+            
+            # Check for double tops/bottoms (simplified)
+            if len(price_data) > 20:
+                recent_highs = [i for i in range(2, len(high_data)-2) if high_data[i] > high_data[i-1] and high_data[i] > high_data[i-2] and high_data[i] > high_data[i+1] and high_data[i] > high_data[i+2]]
+                recent_lows = [i for i in range(2, len(low_data)-2) if low_data[i] < low_data[i-1] and low_data[i] < low_data[i-2] and low_data[i] < low_data[i+1] and low_data[i] < low_data[i+2]]
+                
+                if len(recent_highs) >= 2 and abs(high_data[recent_highs[-1]] - high_data[recent_highs[-2]]) / high_data[recent_highs[-2]] < 0.03:
+                    analysis['patterns']['double_top'] = True
+                
+                if len(recent_lows) >= 2 and abs(low_data[recent_lows[-1]] - low_data[recent_lows[-2]]) / low_data[recent_lows[-2]] < 0.03:
+                    analysis['patterns']['double_bottom'] = True
+        
+        # Determine sentiment based on indicators
+        if analysis['indicators']['rsi'] > 70:
+            analysis['sentiment'] = 'overbought'
+        elif analysis['indicators']['rsi'] < 30:
+            analysis['sentiment'] = 'oversold'
+        elif analysis['indicators']['macd'] > 0 and analysis['indicators']['sma20'] > analysis['indicators']['sma50']:
+            analysis['sentiment'] = 'bullish'
+        elif analysis['indicators']['macd'] < 0 and analysis['indicators']['sma20'] < analysis['indicators']['sma50']:
+            analysis['sentiment'] = 'bearish'
+        
+        # Generate recommendation
+        if analysis['sentiment'] == 'bullish' or analysis['sentiment'] == 'oversold':
+            analysis['recommendation'] = 'BUY'
+        elif analysis['sentiment'] == 'bearish' or analysis['sentiment'] == 'overbought':
+            analysis['recommendation'] = 'SELL'
+        
+        return analysis
+
+    def generate_signal(self, analysis: Dict) -> Dict:
+        """Generate a trading signal based on market analysis."""
+        signal = {
+            'action': 'HOLD',
+            'confidence': 0.5,
+            'reason': ''
+        }
+        
+        # Set action based on recommendation
+        if analysis['recommendation'] == 'BUY':
+            # Determine strength of buy signal
+            if analysis['sentiment'] == 'oversold' or (analysis['indicators']['rsi'] < 40 and analysis['indicators']['macd'] > 0):
+                signal['action'] = 'STRONG_BUY'
+                signal['confidence'] = 0.8
+                signal['reason'] = f"Strong buy signal: RSI {analysis['indicators']['rsi']:.1f} (oversold), positive MACD"
+            else:
+                signal['action'] = 'BUY'
+                signal['confidence'] = 0.7
+                signal['reason'] = f"Buy signal: Bullish trend, RSI {analysis['indicators']['rsi']:.1f}"
+        
+        elif analysis['recommendation'] == 'SELL':
+            # Determine strength of sell signal
+            if analysis['sentiment'] == 'overbought' or (analysis['indicators']['rsi'] > 60 and analysis['indicators']['macd'] < 0):
+                signal['action'] = 'STRONG_SELL'
+                signal['confidence'] = 0.8
+                signal['reason'] = f"Strong sell signal: RSI {analysis['indicators']['rsi']:.1f} (overbought), negative MACD"
+            else:
+                signal['action'] = 'SELL'
+                signal['confidence'] = 0.7
+                signal['reason'] = f"Sell signal: Bearish trend, RSI {analysis['indicators']['rsi']:.1f}"
+        
+        else:
+            # Handle HOLD signals
+            if analysis['indicators']['rsi'] > 45 and analysis['indicators']['rsi'] < 55:
+                signal['action'] = 'HOLD'
+                signal['confidence'] = 0.6
+                signal['reason'] = f"Hold signal: Neutral RSI {analysis['indicators']['rsi']:.1f}"
+            else:
+                signal['action'] = 'WATCH'
+                signal['confidence'] = 0.5
+                signal['reason'] = f"Watch signal: Unclear trend, monitoring for confirmation"
+        
+        # Special handling for pattern recognition (Oracle AI)
+        if 'patterns' in analysis and analysis['patterns']:
+            pattern_reasons = []
+            
+            if analysis['patterns'].get('double_top', False):
+                pattern_reasons.append("double top pattern detected")
+                if signal['action'] in ['HOLD', 'WATCH', 'BUY']:
+                    signal['action'] = 'SELL'
+                    signal['confidence'] = 0.75
+            
+            if analysis['patterns'].get('double_bottom', False):
+                pattern_reasons.append("double bottom pattern detected")
+                if signal['action'] in ['HOLD', 'WATCH', 'SELL']:
+                    signal['action'] = 'BUY'
+                    signal['confidence'] = 0.75
+            
+            if pattern_reasons:
+                signal['reason'] = f"Pattern-based signal: {', '.join(pattern_reasons)}"
+        
+        return signal
+
+def create_dashboard(trading_system, title="AI Crypto Trading Arena", subtitle="AI Traders Battle: $20 → $100 Challenge"):
     """Create the trading dashboard."""
     app = dash.Dash(
         __name__,
@@ -807,21 +1594,19 @@ def create_dashboard(trading_system):
     
     # Initialize wallets if needed
     for agent in trading_system.agents:
-        if not hasattr(agent, 'wallet'):
-            agent.wallet = Wallet(initial_balance_usdt=20.0)
-        if not hasattr(agent.wallet, 'holdings'):
-            agent.wallet.holdings = {}
+        if not hasattr(agent['wallet'], 'holdings'):
+            agent['wallet'].holdings = {}
     
     app.layout = html.Div([
         # Header with new style
         html.Div([
             html.Div([
                 html.H1([
-                    "AI Crypto Trading Arena ",
+                    title + " ",
                     html.Span("LIVE", className='live-badge')
                 ], className='dashboard-title'),
                 html.P([
-                    "AI Traders Battle: $20 → $100 Challenge ",
+                    subtitle + " ",
                     html.Span("🤖", className='emoji'),
                     html.Span("💰", className='emoji')
                 ], className='dashboard-subtitle')
@@ -906,9 +1691,9 @@ def create_dashboard(trading_system):
                         )
                     ], className='control-item')
                 ], className='trading-controls')
-            ], id='market-overview-tab'),
+            ], id='market-overview-tab', style={'display': 'block'}),
             
-            # Traders Portfolio Tab
+            # Traders Portfolio Tab - Initially hidden
             html.Div([
                 # Signals Table with filter
                 html.Div([
@@ -964,8 +1749,8 @@ def create_dashboard(trading_system):
                         )
                     ], className='discussions-header'),
                     html.Div(id='agent-discussions', className='discussions-container')
-                ], className='discussions-panel')
-            ], id='traders-portfolio-tab', style={'display': 'none'})
+                ], className='discussions-section')
+            ], id='traders-portfolio-tab', style={'display': 'none'}),
         ], className='main-content'),
         
         # Memory status indicator with animation
@@ -978,19 +1763,33 @@ def create_dashboard(trading_system):
     
     @app.callback(
         [Output('market-overview-tab', 'style'),
-         Output('traders-portfolio-tab', 'style')],
+         Output('traders-portfolio-tab', 'style'),
+         Output('nav-market-overview', 'className'),
+         Output('nav-traders-comparison', 'className')],
         [Input('nav-market-overview', 'n_clicks'),
          Input('nav-traders-comparison', 'n_clicks')]
     )
     def toggle_tabs(market_clicks, traders_clicks):
+        """Toggle between market overview and traders portfolio tabs."""
         ctx = callback_context
+        
+        # Default to market overview tab if no clicks yet
         if not ctx.triggered:
-            return {'display': 'block'}, {'display': 'none'}
+            return {'display': 'block'}, {'display': 'none'}, 'nav-button active', 'nav-button'
+        
+        # Get the ID of the button that was clicked
         button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        
+        # Switch tabs based on which button was clicked
         if button_id == 'nav-market-overview':
-            return {'display': 'block'}, {'display': 'none'}
-        else:
-            return {'display': 'none'}, {'display': 'block'}
+            print("Switching to Market Overview tab")
+            return {'display': 'block'}, {'display': 'none'}, 'nav-button active', 'nav-button'
+        elif button_id == 'nav-traders-comparison':
+            print("Switching to Traders Portfolio tab")
+            return {'display': 'none'}, {'display': 'block'}, 'nav-button', 'nav-button active'
+        
+        # Fallback (should not reach here)
+        return {'display': 'block'}, {'display': 'none'}, 'nav-button active', 'nav-button'
     
     @app.callback(
         [Output('multi-chart-container', 'children'),
@@ -1150,11 +1949,14 @@ def create_dashboard(trading_system):
     
     @app.callback(
         Output('traders-performance-cards', 'children'),
-        [Input('auto-refresh-interval', 'n_intervals')]
+        [Input('auto-refresh-interval', 'n_intervals'),
+         Input('performance-sort', 'value')]
     )
-    def update_traders_comparison(n):
+    def update_traders_comparison(n, sort_by='total'):
         """Update the traders comparison view."""
         try:
+            print("Updating trader performance cards...")
+            
             # Get current prices for all symbols
             current_prices = {}
             for symbol in trading_system.symbols:
@@ -1175,11 +1977,11 @@ def create_dashboard(trading_system):
             for agent in trading_system.agents:
                 try:
                     # Get wallet metrics
-                    metrics = agent.wallet.get_performance_metrics(current_prices)
+                    metrics = agent['wallet'].get_performance_metrics(current_prices)
                     
                     # Get holdings that have non-zero amounts
                     holdings_display = []
-                    for symbol, holding_data in metrics['holdings_with_prices'].items():
+                    for symbol, holding_data in metrics.get('holdings_with_prices', {}).items():
                         if holding_data['amount'] > 1e-8:  # Only display non-dust amounts
                             holdings_display.append({
                                 'symbol': symbol.split('/')[0] if '/' in symbol else symbol,
@@ -1193,7 +1995,7 @@ def create_dashboard(trading_system):
                     
                     # Get trade history and format it properly
                     trades_history = []
-                    for trade in agent.wallet.trades_history[-5:]:  # Get last 5 trades
+                    for trade in agent['wallet'].trades_history[-5:]:  # Get last 5 trades
                         if isinstance(trade, dict) and 'symbol' in trade:
                             trades_history.append({
                                 'symbol': trade['symbol'],
@@ -1204,26 +2006,37 @@ def create_dashboard(trading_system):
                             })
                     
                     # Calculate goal progress
-                    goal_progress = (metrics['total_value_usdt'] / 100.0) * 100
-                    goal_status = "Goal Reached! 🏆" if goal_progress >= 100 else f"{goal_progress:.1f}% to $100"
+                    if agent.get('goal', 'usd') == 'usd':
+                        goal_progress = (metrics['total_value_usdt'] / 100.0) * 100
+                        goal_status = "Goal Reached! 🏆" if goal_progress >= 100 else f"{goal_progress:.1f}% to $100"
+                    else:  # BTC goal
+                        btc_holdings = sum(h['amount'] for h in holdings_display if h['symbol'] == 'BTC')
+                        goal_progress = btc_holdings * 100  # % of 1 BTC
+                        goal_status = "Goal Reached! 🏆" if goal_progress >= 100 else f"{goal_progress:.1f}% to 1 BTC"
                     
                     performance_data.append({
-                        'name': agent.name,
-                        'personality': agent.get_personality_traits()['personality'],
+                        'name': agent['name'],
+                        'personality': agent['personality'],
                         'total_value': metrics['total_value_usdt'],
                         'usdt_balance': metrics['balance_usdt'],
                         'crypto_value': metrics['total_value_usdt'] - metrics['balance_usdt'],
                         'holdings': holdings_display,
                         'trades': trades_history,
                         'goal_progress': goal_progress,
-                        'goal_status': goal_status
+                        'goal_status': goal_status,
+                        'goal_type': agent.get('goal', 'usd')
                     })
                 except Exception as e:
-                    print(f"Error getting performance data for {agent.name}: {str(e)}")
+                    print(f"Error getting performance data for {agent['name']}: {str(e)}")
                     continue
             
-            # Sort by total value
-            performance_data.sort(key=lambda x: x['total_value'], reverse=True)
+            # Sort based on selected criteria
+            if sort_by == 'total':
+                performance_data.sort(key=lambda x: x['total_value'], reverse=True)
+            elif sort_by == 'profit':
+                performance_data.sort(key=lambda x: (x['total_value'] - 20) / 20 * 100, reverse=True)
+            elif sort_by == 'goal':
+                performance_data.sort(key=lambda x: x['goal_progress'], reverse=True)
             
             # Create performance cards
             cards = []
@@ -1232,7 +2045,7 @@ def create_dashboard(trading_system):
                     html.Div([
                         html.H3([
                             html.Span(data['name'].replace(' AI', ''), className='agent-name'),
-                            html.Span(data['personality'], className=f"agent-badge {data['personality'].lower()}")
+                            html.Span(data['personality'], className=f"agent-badge {data['personality'].lower().replace(' ', '-')}")
                         ]),
                         html.Div([
                             html.Div(f"${data['total_value']:.2f}", className='total-value'),
@@ -1292,12 +2105,16 @@ def create_dashboard(trading_system):
                                     style={'width': f"{min(100, data['goal_progress'])}%"}
                                 )
                             ]),
-                            html.Div(data['goal_status'], className='goal-status')
+                            html.Div([
+                                html.Span(data['goal_status'], className='goal-status'),
+                                html.Span(f"Goal: {'$100' if data['goal_type'] == 'usd' else '1 BTC'}", className='goal-type')
+                            ], className='goal-info')
                         ], className='goal-container')
                     ], className='card-content')
                 ], className='performance-card')
                 cards.append(card)
             
+            print(f"Generated {len(cards)} performance cards")
             return html.Div(cards, className='performance-cards-grid')
             
         except Exception as e:
@@ -1338,7 +2155,8 @@ def create_dashboard(trading_system):
                         html.Div([
                             html.Span(disc['symbol'], className='discussion-symbol'),
                             html.Span(
-                                disc['timestamp'].strftime('%H:%M:%S'),
+                                disc['timestamp'].strftime('%H:%M:%S') if isinstance(disc['timestamp'], datetime) else 
+                                datetime.fromtimestamp(disc['timestamp']).strftime('%H:%M:%S'),
                                 className='discussion-time'
                             )
                         ]),
@@ -1435,8 +2253,8 @@ def create_dashboard(trading_system):
         try:
             # Reset all traders
             trading_system._reset_agents()
-            # Make initial BTC purchase
-            trading_system._make_initial_btc_purchase()
+            # Save state after reset
+            trading_system._save_state()
             return "All traders reset successfully"
         except Exception as e:
             print(f"Error resetting traders: {str(e)}")
@@ -1458,4 +2276,4 @@ if __name__ == '__main__':
     
     # Create and run the dashboard
     app = create_dashboard(trading_system)
-    app.run_server(debug=True) 
+    app.run_server(host='0.0.0.0', port=8050, debug=False) 
