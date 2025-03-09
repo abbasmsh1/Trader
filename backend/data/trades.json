@@ -1,0 +1,156 @@
+{
+  "5b8f3dee-8025-4533-ab37-7d37c9e80d70": [
+    {
+      "id": "62593534-87c0-4a75-ae86-e72fba387317",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 4.0,
+      "amount_crypto": 0.0019550476041371076,
+      "price": 2043.94,
+      "fee": 0.004,
+      "timestamp": "2025-03-09T20:38:19.238393"
+    },
+    {
+      "id": "9112d424-eb77-4a33-9166-68a9c4b1f2cd",
+      "type": "buy",
+      "symbol": "BNB",
+      "amount_usdt": 4.0,
+      "amount_crypto": 0.007127949911703323,
+      "price": 560.61,
+      "fee": 0.004,
+      "timestamp": "2025-03-09T20:38:19.245947"
+    },
+    {
+      "id": "5c417c35-4534-486e-a9e7-55c3fa0dfdee",
+      "type": "buy",
+      "symbol": "XRP",
+      "amount_usdt": 4.0,
+      "amount_crypto": 1.8342896488409455,
+      "price": 2.1785,
+      "fee": 0.004,
+      "timestamp": "2025-03-09T20:38:19.249789"
+    }
+  ],
+  "290cab69-0422-4610-a6af-c8df1b9e9c14": [
+    {
+      "id": "df50bcd5-c38c-4e43-8f10-e1ec1f797cea",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 12.6,
+      "amount_crypto": 0.006158399953031889,
+      "price": 2043.94,
+      "fee": 0.0126,
+      "timestamp": "2025-03-09T20:38:19.252511"
+    },
+    {
+      "id": "acf6c786-7181-44c1-933e-bab508248330",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 1.265114651026936,
+      "amount_crypto": 0.0006186515981496536,
+      "price": 2042.91,
+      "fee": 0.001265114651026936,
+      "timestamp": "2025-03-09T20:43:21.469676"
+    }
+  ],
+  "7a7363ff-1e03-4228-8d50-e99766e7ba4d": [
+    {
+      "id": "210a7746-e1dc-4960-ab7c-386e6a8752d4",
+      "type": "buy",
+      "symbol": "BTC",
+      "amount_usdt": 5.6,
+      "amount_crypto": 6.751466293355216e-05,
+      "price": 82862.0,
+      "fee": 0.0056,
+      "timestamp": "2025-03-09T20:38:19.255444"
+    },
+    {
+      "id": "9f645809-20b0-48aa-858a-c26f12e5a44f",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 5.6,
+      "amount_crypto": 0.0027370666457919505,
+      "price": 2043.94,
+      "fee": 0.0056,
+      "timestamp": "2025-03-09T20:38:19.258579"
+    },
+    {
+      "id": "d5c54e0b-9ccb-41f6-86cd-fc1c8741ced6",
+      "type": "buy",
+      "symbol": "BNB",
+      "amount_usdt": 5.6,
+      "amount_crypto": 0.00997912987638465,
+      "price": 560.61,
+      "fee": 0.0056,
+      "timestamp": "2025-03-09T20:38:19.261639"
+    }
+  ],
+  "7d7628d8-8336-41ca-aeed-e5e7721c5bd2": [
+    {
+      "id": "2aa1601e-5476-4947-8d3b-7ae3823ed65d",
+      "type": "buy",
+      "symbol": "BTC",
+      "amount_usdt": 8.0,
+      "amount_crypto": 9.64495184765031e-05,
+      "price": 82862.0,
+      "fee": 0.008,
+      "timestamp": "2025-03-09T20:38:19.265852"
+    },
+    {
+      "id": "c154f1f5-dcc6-4368-b295-0f2fff378196",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 8.0,
+      "amount_crypto": 0.003910095208274215,
+      "price": 2043.94,
+      "fee": 0.008,
+      "timestamp": "2025-03-09T20:38:19.268881"
+    }
+  ],
+  "49bc67ac-cd22-4122-b0ca-681d378f1749": [
+    {
+      "id": "043cfb2a-c9fe-4b49-b781-4a38b96ea467",
+      "type": "buy",
+      "symbol": "BTC",
+      "amount_usdt": 7.2,
+      "amount_crypto": 8.68045666288528e-05,
+      "price": 82862.0,
+      "fee": 0.007200000000000001,
+      "timestamp": "2025-03-09T20:38:19.273339"
+    },
+    {
+      "id": "56ac529f-67d3-4302-a786-226fe809bd7e",
+      "type": "buy",
+      "symbol": "ETH",
+      "amount_usdt": 6.8,
+      "amount_crypto": 0.003323580927033083,
+      "price": 2043.94,
+      "fee": 0.0068,
+      "timestamp": "2025-03-09T20:38:19.275957"
+    }
+  ],
+  "dcf6b9a8-ebc2-4d0c-8ce0-f34e62a85b2c": [
+    {
+      "id": "849bc564-c268-458a-a733-3dec17160b81",
+      "type": "buy",
+      "symbol": "BTC",
+      "amount_usdt": 7.404947085619966,
+      "amount_crypto": 8.927544759400384e-05,
+      "price": 82862.0,
+      "fee": 0.007404947085619966,
+      "timestamp": "2025-03-09T20:38:19.279804"
+    }
+  ],
+  "9501f9ee-163c-4592-ad1e-0641a1c2db98": [
+    {
+      "id": "48339cbc-b68e-4e42-bb7e-21dd93697732",
+      "type": "buy",
+      "symbol": "BTC",
+      "amount_usdt": 13.6,
+      "amount_crypto": 0.0001639298570753752,
+      "price": 82879.35,
+      "fee": 0.0136,
+      "timestamp": "2025-03-09T20:43:21.473682"
+    }
+  ]
+}

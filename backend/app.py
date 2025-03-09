@@ -144,6 +144,118 @@ async def sell_asset(trader_id: str, request: SellRequest):
         raise HTTPException(status_code=400, detail="Failed to sell asset")
 
 
+@app.get("/analytics")
+async def get_all_analytics():
+    """Get analytics for all traders."""
+    analytics = {}
+    for trader in simulation.traders:
+        trader_analytics = trader.trade_store.get_analytics(trader.id)
+        if trader_analytics:
+            analytics[trader.id] = {
+                'trader_name': trader.name,
+                'analytics': trader_analytics
+            }
+    return {"analytics": analytics}
+
+
+@app.get("/analytics/{trader_id}")
+async def get_trader_analytics(trader_id: str):
+    """Get detailed analytics for a specific trader."""
+    trader = None
+    for t in simulation.traders:
+        if t.id == trader_id:
+            trader = t
+            break
+    
+    if not trader:
+        raise HTTPException(status_code=404, detail=f"Trader with ID {trader_id} not found")
+    
+    analytics = trader.trade_store.get_analytics(trader.id)
+    if not analytics:
+        raise HTTPException(status_code=404, detail=f"No analytics found for trader {trader_id}")
+    
+    return {
+        "trader_name": trader.name,
+        "analytics": analytics
+    }
+
+
+@app.get("/simulation/status")
+async def get_simulation_status():
+    """Get detailed simulation status including performance metrics."""
+    active_traders = [t for t in simulation.traders if t.active]
+    
+    # Get current market data for portfolio calculations
+    market_data = market.get_current_data()
+    
+    # Calculate simulation metrics
+    metrics = {
+        'start_time': simulation.start_time.isoformat() if simulation.start_time else None,
+        'duration': str(datetime.now() - simulation.start_time) if simulation.start_time else None,
+        'active_traders': len(active_traders),
+        'total_traders': len(simulation.traders),
+        'winner': {
+            'name': simulation.winner.name,
+            'id': simulation.winner.id,
+            'time_to_win': str(simulation.winner.goal_reached_time - simulation.start_time)
+        } if simulation.winner else None,
+        'traders': []
+    }
+    
+    # Add detailed trader information
+    for trader in simulation.traders:
+        portfolio_value = trader.get_portfolio_value(market_data)
+        analytics = trader.trade_store.get_analytics(trader.id)
+        
+        trader_info = {
+            'id': trader.id,
+            'name': trader.name,
+            'active': trader.active,
+            'portfolio_value': portfolio_value,
+            'goal_reached': trader.goal_reached,
+            'total_trades': analytics.get('total_trades', 0),
+            'win_rate': analytics.get('win_rate', 0),
+            'profit_loss': portfolio_value - STARTING_CAPITAL
+        }
+        metrics['traders'].append(trader_info)
+    
+    return metrics
+
+
+@app.post("/simulation/backup")
+async def create_backup():
+    """Manually trigger a backup of all simulation data."""
+    try:
+        for trader in simulation.traders:
+            # Force immediate backup
+            trader.trade_store._check_and_create_backup()
+        return {"message": "Backup created successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/news")
+async def get_news():
+    """Get current news data and sentiment analysis."""
+    if not simulation:
+        raise HTTPException(status_code=400, detail="Simulation not running")
+    
+    return simulation.get_news_data()
+
+
+@app.get("/api/traders/{trader_id}/news-impact")
+async def get_trader_news_impact(trader_id: str):
+    """Get news impact analysis for a specific trader."""
+    if not simulation:
+        raise HTTPException(status_code=400, detail="Simulation not running")
+    
+    news_impact = simulation.get_trader_news_impact(trader_id)
+    if not news_impact:
+        raise HTTPException(status_code=404, detail="Trader not found")
+    
+    return news_impact
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""

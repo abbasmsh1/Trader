@@ -10,4 +10,6 @@ scikit-learn==1.2.2
 pytest==7.3.1
 requests==2.28.2
 aiohttp==3.8.4
-pydantic==1.10.7 
+pydantic==1.10.7
+feedparser==6.0.10
+beautifulsoup4==4.12.0

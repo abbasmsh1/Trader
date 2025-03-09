@@ -16,6 +16,8 @@ from ..agents.elon_musk import ElonMusk
 from ..agents.jeff_bezos import JeffBezos
 from ..agents.warren_buffett import WarrenBuffett
 from ..agents.ray_dalio import RayDalio
+from ..agents.news_trader import NewsTrader
+from ..services.news_fetcher import CryptoNewsFetcher
 from ..config import SIMULATION_INTERVAL, COMMUNICATION_INTERVAL, TARGET_CAPITAL
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,9 @@ class Simulation:
         self.start_time = None
         self.end_time = None
         self.winner = None
+        self.news_fetcher = CryptoNewsFetcher()
+        self.latest_news = []
+        self.news_sentiment = {}
         
         # Initialize traders
         self._init_traders()
@@ -55,7 +60,8 @@ class Simulation:
             ElonMusk(),
             JeffBezos(),
             WarrenBuffett(),
-            RayDalio()
+            RayDalio(),
+            NewsTrader()  # Add the news-focused trader
         ]
         logger.info(f"Initialized {len(self.traders)} traders")
     
@@ -69,12 +75,13 @@ class Simulation:
         self.start_time = datetime.now()
         logger.info(f"Starting simulation at {self.start_time}")
         
-        # Create tasks for simulation and communication
+        # Create tasks for simulation, communication, and news updates
         simulation_task = asyncio.create_task(self._simulation_loop())
         communication_task = asyncio.create_task(self._communication_loop())
+        news_task = asyncio.create_task(self._news_update_loop())
         
-        # Wait for both tasks to complete
-        await asyncio.gather(simulation_task, communication_task)
+        # Wait for all tasks to complete
+        await asyncio.gather(simulation_task, communication_task, news_task)
     
     async def stop(self):
         """Stop the simulation."""
@@ -118,21 +125,39 @@ class Simulation:
                         continue
                     
                     # Analyze the market and make trading decisions
-                    analysis = trader.analyze_market(market_data)
+                    analysis = trader.analyze_market(market_data, self.news_sentiment)
                     
                     # Execute trades based on analysis
                     if 'trades' in analysis:
                         for trade in analysis['trades']:
-                            if trade['action'] == 'buy':
+                            try:
                                 symbol = trade['symbol'].replace('USDT', '')
-                                amount_usdt = trade['amount_usdt']
                                 price = current_prices[trade['symbol']]
-                                trader.buy(symbol, amount_usdt, price)
-                            elif trade['action'] == 'sell':
-                                symbol = trade['symbol'].replace('USDT', '')
-                                amount_crypto = trade['amount_crypto']
-                                price = current_prices[trade['symbol']]
-                                trader.sell(symbol, amount_crypto, price)
+                                
+                                if trade['action'] == 'buy':
+                                    amount_usdt = trade['amount_usdt']
+                                    success = trader.buy(symbol, amount_usdt, price)
+                                    if not success:
+                                        logger.warning(f"Failed to execute buy order for {trader.name}: {symbol}")
+                                elif trade['action'] == 'sell':
+                                    # Handle both amount_crypto and amount_usdt for sells
+                                    if 'amount_crypto' in trade:
+                                        amount_crypto = trade['amount_crypto']
+                                        success = trader.sell(symbol, amount_crypto, price)
+                                    elif 'amount_usdt' in trade:
+                                        # Convert USDT amount to crypto amount for sell
+                                        amount_crypto = trade['amount_usdt'] / price
+                                        success = trader.sell(symbol, amount_crypto, price)
+                                    else:
+                                        logger.error(f"Invalid sell order from {trader.name}: missing amount")
+                                        continue
+                                        
+                                    if not success:
+                                        logger.warning(f"Failed to execute sell order for {trader.name}: {symbol}")
+                            except KeyError as e:
+                                logger.error(f"Invalid trade format from {trader.name}: {e}")
+                            except Exception as e:
+                                logger.error(f"Error executing trade for {trader.name}: {e}")
                 
                 # Check if all traders are inactive or if we have a winner
                 active_traders = [t for t in self.traders if t.active]
@@ -162,7 +187,7 @@ class Simulation:
                     
                     # Generate a message
                     other_traders = [t for t in self.traders if t.id != trader.id]
-                    message = trader.generate_message(market_data, other_traders)
+                    message = trader.generate_message(market_data, other_traders, self.news_sentiment)
                     
                     if message:
                         # Record the message
@@ -183,7 +208,7 @@ class Simulation:
                                 continue
                             
                             # Generate a response
-                            response = other_trader.respond_to_message(message_obj, market_data)
+                            response = other_trader.respond_to_message(message_obj, market_data, self.news_sentiment)
                             
                             if response:
                                 # Record the response
@@ -204,6 +229,24 @@ class Simulation:
             except Exception as e:
                 logger.error(f"Error in communication loop: {e}")
                 await asyncio.sleep(COMMUNICATION_INTERVAL)
+    
+    async def _news_update_loop(self):
+        """Update news and sentiment data periodically."""
+        while self.running:
+            try:
+                # Fetch latest news
+                self.latest_news = await self.news_fetcher.fetch_all_news()
+                
+                # Update sentiment analysis
+                self.news_sentiment = self.news_fetcher.analyze_sentiment(self.latest_news)
+                
+                logger.info("Updated news and sentiment data")
+                
+                # Wait before next update (15 minutes)
+                await asyncio.sleep(900)
+            except Exception as e:
+                logger.error(f"Error in news update loop: {e}")
+                await asyncio.sleep(60)  # Wait a minute before retrying
     
     def get_traders_info(self) -> List[Dict[str, Any]]:
         """
@@ -254,3 +297,23 @@ class Simulation:
             'active_traders': len([t for t in self.traders if t.active]),
             'total_traders': len(self.traders)
         } 
+    
+    def get_news_data(self) -> Dict[str, Any]:
+        """Get current news data and analysis."""
+        return {
+            'latest_news': self.latest_news[-20:],  # Last 20 news items
+            'sentiment_analysis': self.news_sentiment,
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def get_trader_news_impact(self, trader_id: str) -> Dict[str, Any]:
+        """Get news impact analysis for a specific trader."""
+        trader = next((t for t in self.traders if t.id == trader_id), None)
+        if not trader:
+            return {}
+        
+        return {
+            'trader_name': trader.name,
+            'news_sentiment': trader.news_sentiment,
+            'trading_decisions': trader.trades[-5:] if hasattr(trader, 'trades') else []
+        }

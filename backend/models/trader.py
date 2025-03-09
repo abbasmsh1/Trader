@@ -5,6 +5,8 @@ from datetime import datetime
 import random
 
 from ..config import STARTING_CAPITAL, TARGET_CAPITAL, TRADING_FEE
+from .trade_store import TradeStore
+from ..services.news_fetcher import CryptoNewsFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -30,22 +32,36 @@ class Trader:
         self.trading_style = trading_style
         self.backstory = backstory
         
-        # Portfolio
-        self.wallet = {
-            'USDT': STARTING_CAPITAL,  # Starting with USDT
-        }
+        # Initialize trade store and news fetcher
+        self.trade_store = TradeStore()
+        self.news_fetcher = CryptoNewsFetcher()
         
-        # Trading history
-        self.trades = []
+        # Load saved state if exists
+        saved_state = self.trade_store.load_trader_state(self.id)
+        if saved_state:
+            self.wallet = saved_state.get('wallet', {'USDT': STARTING_CAPITAL})
+            self.active = saved_state.get('active', True)
+            self.goal_reached = saved_state.get('goal_reached', False)
+            self.start_time = datetime.fromisoformat(saved_state.get('start_time', datetime.now().isoformat()))
+            self.goal_reached_time = datetime.fromisoformat(saved_state.get('goal_reached_time')) if saved_state.get('goal_reached_time') else None
+            self.news_sentiment = saved_state.get('news_sentiment', {})
+        else:
+            # Portfolio
+            self.wallet = {
+                'USDT': STARTING_CAPITAL,  # Starting with USDT
+            }
+            # Status
+            self.active = True
+            self.goal_reached = False
+            self.start_time = datetime.now()
+            self.goal_reached_time = None
+            self.news_sentiment = {}
         
-        # Communication history
+        # Load trading history
+        self.trades = self.trade_store.load_trades(self.id)
+        
+        # Communication history (not persisted)
         self.messages = []
-        
-        # Status
-        self.active = True
-        self.goal_reached = False
-        self.start_time = datetime.now()
-        self.goal_reached_time = None
     
     def get_portfolio_value(self, current_prices: Dict[str, float]) -> float:
         """
@@ -87,9 +103,76 @@ class Trader:
             self.goal_reached = True
             self.goal_reached_time = datetime.now()
             logger.info(f"Trader {self.name} reached the goal of ${TARGET_CAPITAL}!")
+            self._save_state()
             return True
         
         return False
+    
+    async def analyze_market(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze the market data and make trading decisions.
+        This method should be overridden by subclasses.
+        
+        Args:
+            market_data: The current market data
+            
+        Returns:
+            A dictionary containing the analysis results
+        """
+        # Fetch and analyze news before making trading decisions
+        await self._update_news_analysis()
+        
+        # Base class provides basic analysis
+        analysis = {
+            'timestamp': datetime.now().isoformat(),
+            'portfolio_value': self.get_portfolio_value(market_data),
+            'news_sentiment': self.news_sentiment,
+            'trades': []
+        }
+        
+        return analysis
+    
+    async def _update_news_analysis(self) -> None:
+        """Update news analysis for trading decisions."""
+        try:
+            # Fetch latest news
+            news_items = await self.news_fetcher.fetch_all_news()
+            
+            # Analyze sentiment
+            self.news_sentiment = self.news_fetcher.analyze_sentiment(news_items)
+            
+            # Save updated state with news sentiment
+            self._save_state()
+            
+            logger.info(f"Updated news analysis for trader {self.name}")
+        except Exception as e:
+            logger.error(f"Error updating news analysis for trader {self.name}: {e}")
+    
+    def _evaluate_news_impact(self, symbol: str) -> float:
+        """
+        Evaluate the impact of news on a specific trading pair.
+        Returns a score between -1 and 1 indicating buy/sell signal strength.
+        """
+        if not self.news_sentiment:
+            return 0.0
+        
+        score = 0.0
+        
+        # Consider overall market sentiment
+        score += self.news_sentiment.get('overall', 0) * 0.3
+        
+        # Consider source-specific sentiment
+        source_sentiments = self.news_sentiment.get('by_source', {})
+        if source_sentiments:
+            avg_source_sentiment = sum(source_sentiments.values()) / len(source_sentiments)
+            score += avg_source_sentiment * 0.3
+        
+        # Consider development news (GitHub updates)
+        dev_sentiment = self.news_sentiment.get('by_type', {}).get('development', 0)
+        score += dev_sentiment * 0.4
+        
+        # Normalize score to [-1, 1] range
+        return max(min(score, 1.0), -1.0)
     
     def buy(self, symbol: str, amount_usdt: float, price: float) -> bool:
         """
@@ -128,6 +211,9 @@ class Trader:
             'timestamp': datetime.now().isoformat()
         }
         self.trades.append(trade)
+        
+        # Save updated state
+        self._save_state()
         
         logger.info(f"Trader {self.name} bought {amount_crypto} {symbol} for {amount_usdt} USDT")
         return True
@@ -171,26 +257,16 @@ class Trader:
         }
         self.trades.append(trade)
         
+        # Save updated state
+        self._save_state()
+        
         logger.info(f"Trader {self.name} sold {amount_crypto} {symbol} for {amount_usdt_after_fee} USDT")
         return True
-    
-    def analyze_market(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Analyze the market data and make trading decisions.
-        This method should be overridden by subclasses.
-        
-        Args:
-            market_data: The current market data
-            
-        Returns:
-            A dictionary containing the analysis results
-        """
-        raise NotImplementedError("Subclasses must implement analyze_market()")
     
     def generate_message(self, market_data: Dict[str, Any], other_traders: List['Trader']) -> Optional[str]:
         """
         Generate a message to share with other traders.
-        This method should be overridden by subclasses.
+        Now includes insights from news analysis.
         
         Args:
             market_data: The current market data
@@ -199,7 +275,17 @@ class Trader:
         Returns:
             A message string, or None if no message is generated
         """
-        raise NotImplementedError("Subclasses must implement generate_message()")
+        if not self.active or random.random() > 0.3:  # 30% chance to generate message
+            return None
+        
+        # Include news sentiment in messages
+        if self.news_sentiment:
+            sentiment_str = "positive" if self.news_sentiment.get('overall', 0) > 0 else "negative"
+            return f"{self.name}'s Market Update: Overall sentiment is {sentiment_str}. "
+            f"Development activity is {'high' if self.news_sentiment.get('by_type', {}).get('development', 0) > 0.5 else 'normal'}. "
+            f"Consider {'buying' if sentiment_str == 'positive' else 'being cautious'}."
+        
+        return None
     
     def respond_to_message(self, message: Dict[str, Any], market_data: Dict[str, Any]) -> Optional[str]:
         """
@@ -236,3 +322,16 @@ class Trader:
             'goal_reached_time': self.goal_reached_time.isoformat() if self.goal_reached_time else None,
             'messages': self.messages[-10:] if len(self.messages) > 10 else self.messages  # Last 10 messages
         } 
+    
+    def _save_state(self):
+        """Save the current trader state and trades."""
+        state = {
+            'wallet': self.wallet,
+            'active': self.active,
+            'goal_reached': self.goal_reached,
+            'start_time': self.start_time.isoformat(),
+            'goal_reached_time': self.goal_reached_time.isoformat() if self.goal_reached_time else None,
+            'news_sentiment': self.news_sentiment
+        }
+        self.trade_store.save_trader_state(self.id, state)
+        self.trade_store.save_trades(self.id, self.trades)

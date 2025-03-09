@@ -1,0 +1,78 @@
+{
+  "5b8f3dee-8025-4533-ab37-7d37c9e80d70": {
+    "wallet": {
+      "USDT": 8.0,
+      "ETH": 0.0019550476041371076,
+      "BNB": 0.007127949911703323,
+      "XRP": 1.8342896488409455
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093195",
+    "goal_reached_time": null
+  },
+  "290cab69-0422-4610-a6af-c8df1b9e9c14": {
+    "wallet": {
+      "USDT": 6.134885348973064,
+      "ETH": 0.006777051551181542
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093259",
+    "goal_reached_time": null
+  },
+  "7a7363ff-1e03-4228-8d50-e99766e7ba4d": {
+    "wallet": {
+      "USDT": 3.200000000000001,
+      "BTC": 6.751466293355216e-05,
+      "ETH": 0.0027370666457919505,
+      "BNB": 0.00997912987638465
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093344",
+    "goal_reached_time": null
+  },
+  "7d7628d8-8336-41ca-aeed-e5e7721c5bd2": {
+    "wallet": {
+      "USDT": 4.0,
+      "BTC": 9.64495184765031e-05,
+      "ETH": 0.003910095208274215
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093381",
+    "goal_reached_time": null
+  },
+  "49bc67ac-cd22-4122-b0ca-681d378f1749": {
+    "wallet": {
+      "USDT": 6.000000000000001,
+      "BTC": 8.68045666288528e-05,
+      "ETH": 0.003323580927033083
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093498",
+    "goal_reached_time": null
+  },
+  "dcf6b9a8-ebc2-4d0c-8ce0-f34e62a85b2c": {
+    "wallet": {
+      "USDT": 12.595052914380034,
+      "BTC": 8.927544759400384e-05
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093540",
+    "goal_reached_time": null
+  },
+  "9501f9ee-163c-4592-ad1e-0641a1c2db98": {
+    "wallet": {
+      "USDT": 6.4,
+      "BTC": 0.0001639298570753752
+    },
+    "active": true,
+    "goal_reached": false,
+    "start_time": "2025-03-09T20:38:09.093419",
+    "goal_reached_time": null
+  }
+}
