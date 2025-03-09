@@ -21,6 +21,7 @@ from config.settings import DEFAULT_SYMBOLS, SYSTEM_PARAMS, TIMEFRAMES
 import ta
 from plotly.subplots import make_subplots
 from agents.wallet import Wallet
+import random
 
 # Set default plotly theme
 pio.templates.default = "plotly_dark"
@@ -316,7 +317,7 @@ class TradingSystem:
             return pd.DataFrame()
             
     def generate_discussion(self, signals: List[Dict]) -> str:
-        """Generate a discussion between agents about their trading signals."""
+        """Generate a dynamic discussion between agents about their trading signals."""
         if not signals:
             return ""
             
@@ -329,42 +330,171 @@ class TradingSystem:
             symbol = signals[0]['symbol']
             discussion = []
             
-            # Start with a bullish perspective if any
-            if bullish_agents:
-                bull = bullish_agents[0]
-                discussion.append(f"{bull['agent']}: I'm seeing a strong opportunity in {symbol}. "
-                               f"My {bull['personality']} approach suggests {bull['signal']['action']} "
-                               f"with {bull['signal']['confidence']:.0%} confidence. {bull['signal'].get('reason', '')}")
+            # Get market data for analysis
+            df = self.get_market_data(symbol)
+            if not df.empty:
+                current_price = float(df['close'].iloc[-1])
+                prev_price = float(df['close'].iloc[-2])
+                price_change = ((current_price - prev_price) / prev_price) * 100
+                volume = float(df['volume'].iloc[-1])
                 
-                # Add supporting or opposing views
-                if len(bullish_agents) > 1:
-                    supporter = bullish_agents[1]
-                    discussion.append(f"{supporter['agent']}: I agree! {supporter['signal'].get('reason', 'The technical indicators are aligning.')}")
+                # Calculate technical indicators for deeper analysis
+                sma20 = df['close'].rolling(window=20).mean().iloc[-1]
+                sma50 = df['close'].rolling(window=50).mean().iloc[-1]
+                rsi = ta.momentum.rsi(df['close'], window=14).iloc[-1]
+                trend = "bullish" if sma20 > sma50 else "bearish"
                 
-            # Add bearish perspective
-            if bearish_agents:
-                bear = bearish_agents[0]
-                discussion.append(f"{bear['agent']}: I disagree. {bear['signal'].get('reason', 'The risks are too high.')} "
-                               f"I'm {bear['signal']['action']} with {bear['signal']['confidence']:.0%} confidence.")
+                # Generate personality-based market insights
+                def get_personality_response(agent_data, context):
+                    personality = agent_data['personality'].lower()
+                    if 'value' in personality:
+                        return f"Based on fundamental analysis, the current market valuation {'supports' if context == 'bullish' else 'contradicts'} my thesis."
+                    elif 'tech' in personality:
+                        return f"The technical indicators and momentum metrics {'confirm' if context == 'bullish' else 'challenge'} this position."
+                    elif 'contrarian' in personality:
+                        return f"The market sentiment is too {'optimistic' if context == 'bearish' else 'pessimistic'}, presenting a prime contrarian opportunity."
+                    elif 'macro' in personality:
+                        return f"From a macro perspective, the current market conditions {'favor' if context == 'bullish' else 'discourage'} this position."
+                    elif 'swing' in personality:
+                        return f"The price action and volatility patterns {'support' if context == 'bullish' else 'do not support'} my swing trading strategy."
+                    else:
+                        return f"My analysis of market dynamics {'confirms' if context == 'bullish' else 'contradicts'} this view."
+
+                # Start with market overview from a random agent
+                overview_agent = random.choice(signals)
+                discussion.append(
+                    f"{overview_agent['agent']}: Let's analyze {symbol} at ${current_price:.4f}. "
+                    f"We're seeing a {price_change:.1f}% move with ${volume:,.0f} volume. "
+                    f"Technical indicators show: SMA20 at ${sma20:.4f}, SMA50 at ${sma50:.4f}, RSI at {rsi:.1f}."
+                )
                 
-            # Add neutral perspective
-            if neutral_agents:
-                neutral = neutral_agents[0]
-                discussion.append(f"{neutral['agent']}: Let's not be hasty. {neutral['signal'].get('reason', 'The market needs more time to show its direction.')}")
+                # Initialize debate context
+                debate_points = []
                 
-            # Add a concluding remark from a high-performing agent
-            top_agent = max(signals, key=lambda x: x.get('wallet_metrics', {}).get('total_value_usdt', 0))
-            discussion.append(f"{top_agent['agent']}: Based on my performance so far (${top_agent['wallet_metrics']['total_value_usdt']:.2f}), "
-                           f"I'm sticking to my {top_agent['signal']['action']} position.")
-            
-            # Add the discussion to history
-            self.discussions.append({
-                'timestamp': datetime.now(),
-                'symbol': symbol,
-                'discussion': discussion
-            })
-            
-            return discussion
+                # Add bullish perspectives with counter-arguments
+                if bullish_agents:
+                    for bull in bullish_agents[:2]:
+                        confidence = bull['signal']['confidence']
+                        reason = bull['signal'].get('reason', '')
+                        
+                        # Generate bullish argument
+                        bull_analysis = [
+                            f"{bull['agent']}: I strongly believe in {symbol}'s upside potential.",
+                            f"With {confidence:.0%} confidence, my analysis indicates a {bull['signal']['action']} position.",
+                            get_personality_response(bull, 'bullish')
+                        ]
+                        
+                        if reason:
+                            bull_analysis.append(f"Key insight: {reason}")
+                        
+                        debate_points.append({'agent': bull['agent'], 'view': 'bullish', 'points': bull_analysis})
+                        discussion.append(" ".join(bull_analysis))
+                        
+                        # Generate immediate counter-argument from a bear if available
+                        if bearish_agents:
+                            bear = bearish_agents[0]
+                            counter = [
+                                f"{bear['agent']}: I must challenge that analysis.",
+                                get_personality_response(bear, 'bearish'),
+                                f"Your confidence might be misplaced given the {bear['market_view'].get('risk_assessment', 'current')} risk levels."
+                            ]
+                            debate_points.append({'agent': bear['agent'], 'view': 'bearish', 'points': counter})
+                            discussion.append(" ".join(counter))
+                            
+                            # Bull defends position
+                            defense = [
+                                f"{bull['agent']}: Let me address those concerns.",
+                                f"Even considering the risks, the {bull['strategy'].get('momentum_trading', 0.5):.0%} momentum signals are clear.",
+                                "The market structure supports my thesis."
+                            ]
+                            discussion.append(" ".join(defense))
+                
+                # Add neutral perspective with balanced analysis
+                if neutral_agents:
+                    neutral = neutral_agents[0]
+                    metrics = neutral['wallet_metrics']
+                    
+                    neutral_analysis = [
+                        f"{neutral['agent']}: Let's look at this objectively.",
+                        f"With my portfolio at ${metrics['total_value_usdt']:.2f}, I'm choosing to {neutral['signal']['action']}.",
+                        get_personality_response(neutral, 'neutral')
+                    ]
+                    
+                    if metrics['total_value_usdt'] > 100:
+                        neutral_analysis.append("Capital preservation is crucial at this stage.")
+                    elif metrics['total_value_usdt'] < 30:
+                        neutral_analysis.append("We need to balance growth with risk management.")
+                    
+                    discussion.append(" ".join(neutral_analysis))
+                    
+                    # Generate responses to neutral perspective
+                    if bullish_agents:
+                        bull_response = [
+                            f"{bullish_agents[0]['agent']}: While I respect the cautious approach,",
+                            "you might be missing a significant opportunity here.",
+                            f"The RSI at {rsi:.1f} suggests there's still room for growth."
+                        ]
+                        discussion.append(" ".join(bull_response))
+                    
+                    if bearish_agents:
+                        bear_response = [
+                            f"{bearish_agents[0]['agent']}: I agree with the cautious stance,",
+                            "but I'd go further and consider taking profits.",
+                            f"The current price action at ${current_price:.4f} shows weakness."
+                        ]
+                        discussion.append(" ".join(bear_response))
+                
+                # Add heated debate between top performers
+                top_performers = sorted(signals, key=lambda x: x['wallet_metrics']['total_value_usdt'], reverse=True)[:2]
+                if len(top_performers) >= 2 and top_performers[0]['signal']['action'] != top_performers[1]['signal']['action']:
+                    first = top_performers[0]
+                    second = top_performers[1]
+                    
+                    debate = [
+                        f"{first['agent']}: As the top performer with ${first['wallet_metrics']['total_value_usdt']:.2f},",
+                        f"I can confidently say that {symbol} is showing {first['market_view'].get('market_trend', 'clear')} signals.",
+                        get_personality_response(first, 'bullish' if 'BUY' in first['signal']['action'] else 'bearish'),
+                        
+                        f"{second['agent']}: Performance isn't everything. Look at the volatility patterns!",
+                        f"My ${second['wallet_metrics']['total_value_usdt']:.2f} portfolio was built on careful analysis,",
+                        f"and right now, {symbol} is {second['market_view'].get('risk_assessment', 'showing concerning patterns')}.",
+                        
+                        f"{first['agent']}: The numbers speak for themselves. My strategy has consistently outperformed.",
+                        f"The current market conditions align perfectly with my {first['personality']} approach.",
+                        
+                        f"{second['agent']}: Past performance doesn't guarantee future results.",
+                        f"My {second['personality']} analysis suggests we're approaching a turning point."
+                    ]
+                    discussion.extend(debate)
+                
+                # Add final consensus or agreement to disagree
+                active_agents = [a for a in signals if a['signal']['action'] not in ['HOLD', 'WATCH']]
+                if active_agents:
+                    consensus = [
+                        f"The debate on {symbol} remains active, with valid points on both sides.",
+                        f"Market indicators are {trend}, RSI at {rsi:.1f}, and volume at ${volume:,.0f}.",
+                        "Each trader's strategy and risk tolerance will determine their position."
+                    ]
+                    discussion.append(" ".join(consensus))
+                
+                # Add the discussion to history with metadata
+                self.discussions.append({
+                    'timestamp': datetime.now(),
+                    'symbol': symbol,
+                    'discussion': discussion,
+                    'market_data': {
+                        'price': current_price,
+                        'change': price_change,
+                        'volume': volume,
+                        'trend': trend,
+                        'rsi': rsi,
+                        'sma20': sma20,
+                        'sma50': sma50
+                    },
+                    'debate_points': debate_points
+                })
+                
+                return discussion
         except Exception as e:
             print(f"Error generating discussion: {str(e)}")
             return []
@@ -435,8 +565,35 @@ class TradingSystem:
                     total_value = wallet_metrics['total_value_usdt']
                     
                     # Adjust strategy based on progress toward goal
-                    if total_value < 40:  # Less than $40, be very aggressive
-                        # Increase confidence for buy signals
+                    if total_value < 30:  # Less than $30, be extremely aggressive
+                        # Set very aggressive trading preferences
+                        agent.set_strategy_preferences({
+                            'value_investing': 0.1,  # Reduce value investing weight
+                            'momentum_trading': 1.0,  # Max momentum trading
+                            'trend_following': 1.0,   # Max trend following
+                            'swing_trading': 0.9,     # High swing trading
+                            'scalping': 1.0          # Max scalping
+                        })
+                        
+                        # Update market beliefs to be very optimistic
+                        agent.update_market_beliefs({
+                            'market_trend': 'extremely_bullish',
+                            'volatility_expectation': 'very_high',
+                            'risk_assessment': 'high_reward'
+                        })
+                        
+                        # Boost confidence for buy signals significantly
+                        if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
+                            signal['confidence'] = min(1.0, signal['confidence'] * 2.0)
+                            signal['reason'] += " (Boosted: Extremely aggressive strategy under $30)"
+                            
+                            # Convert WATCH or HOLD signals to SCALE_IN when conditions are favorable
+                            if signal['action'] in ['WATCH', 'HOLD'] and signal['confidence'] > 0.3:
+                                signal['action'] = 'SCALE_IN'
+                                signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
+                                signal['reason'] += " (Modified: Converting to buy signal due to aggressive strategy)"
+                    
+                    elif total_value < 40:  # Between $30 and $40, be very aggressive
                         if signal['action'] in ['BUY', 'STRONG_BUY', 'SCALE_IN']:
                             signal['confidence'] = min(1.0, signal['confidence'] * 1.5)
                             signal['reason'] += " (Boosted: Aggressive growth strategy to reach $100)"
@@ -635,8 +792,14 @@ def create_dashboard(trading_system):
         __name__,
         meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
         suppress_callback_exceptions=True,
-        assets_folder='assets'  # Point to assets folder for static files
+        assets_folder=os.path.join(os.path.dirname(__file__), 'assets'),
+        serve_locally=True,
+        update_title=None
     )
+    
+    # Configure app to serve assets locally
+    app.scripts.config.serve_locally = True
+    app.css.config.serve_locally = True
     
     # Initialize signals history if not present
     if not hasattr(trading_system, 'signals_history'):
