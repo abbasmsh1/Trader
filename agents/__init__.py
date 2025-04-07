@@ -1,4 +1,10 @@
-from .base_agent import BaseAgent
-from .trend_follower import TrendFollower
+"""
+Agents package for Crypto Trader.
 
-__all__ = ['BaseAgent', 'TrendFollower'] 
+This package contains all agent implementations for the trading system.
+"""
+
+# Import main agent classes for easier access
+from agents.system_controller import SystemControllerAgent
+from agents.portfolio_manager import PortfolioManagerAgent
+from agents.execution_agent import ExecutionAgent 

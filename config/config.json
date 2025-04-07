@@ -1,0 +1,189 @@
+{
+    "mode": "run",
+    "use_testnet": true,
+    "base_currency": "USDT",
+    "initial_balance": 20.0,
+    "update_interval": 60,
+    "log_level": "INFO",
+    "exchanges": {
+        "binance": {
+            "api_key": "",
+            "api_secret": "",
+            "testnet": true
+        }
+    },
+    "symbols": [
+        "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
+        "DOT/USDT", "AVAX/USDT", "LINK/USDT", "MATIC/USDT", "DOGE/USDT",
+        "UNI/USDT", "AAVE/USDT", "LTC/USDT", "ATOM/USDT", "FTM/USDT"
+    ],
+    "agents": {
+        "system_controller": {
+            "name": "SystemController",
+            "enabled": true
+        },
+        "portfolio_manager": {
+            "name": "PortfolioManager",
+            "enabled": true,
+            "risk_per_trade": 0.02,
+            "max_open_trades": 5,
+            "allocation_strategy": "equal_weight"
+        },
+        "trader_agents": [
+            {
+                "name": "BuffettTrader",
+                "description": "Value-oriented, long-term investor with a risk-averse approach",
+                "enabled": true,
+                "symbols": ["BTC/USDT", "ETH/USDT", "LTC/USDT"],
+                "timeframe": "1d",
+                "risk_tolerance": "low",
+                "trading_style": "value",
+                "holding_period": "long",
+                "personality_traits": {
+                    "patience": 0.9,
+                    "conservatism": 0.8,
+                    "discipline": 0.9,
+                    "research_focus": 0.9,
+                    "value_bias": 0.9
+                },
+                "model_params": {
+                    "dqn_layers": [128, 64, 32],
+                    "learning_rate": 0.0001,
+                    "discount_factor": 0.95,
+                    "exploration_rate": 0.1
+                }
+            },
+            {
+                "name": "DaioTrader",
+                "description": "Macro-focused, trend follower with strong discipline",
+                "enabled": true,
+                "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "DOT/USDT"],
+                "timeframe": "4h",
+                "risk_tolerance": "medium",
+                "trading_style": "trend",
+                "holding_period": "medium",
+                "personality_traits": {
+                    "patience": 0.7,
+                    "conservatism": 0.6,
+                    "discipline": 0.9,
+                    "macro_focus": 0.9,
+                    "trend_bias": 0.8
+                },
+                "model_params": {
+                    "dqn_layers": [256, 128, 64],
+                    "learning_rate": 0.0005,
+                    "discount_factor": 0.9,
+                    "exploration_rate": 0.15
+                }
+            },
+            {
+                "name": "SorosTrader",
+                "description": "Contrarian with a focus on market reflexivity",
+                "enabled": true,
+                "symbols": ["BTC/USDT", "ETH/USDT", "XRP/USDT", "ADA/USDT", "LINK/USDT"],
+                "timeframe": "1h",
+                "risk_tolerance": "high",
+                "trading_style": "contrarian",
+                "holding_period": "medium",
+                "personality_traits": {
+                    "patience": 0.5,
+                    "conservatism": 0.3,
+                    "creativity": 0.8,
+                    "reflexivity_focus": 0.9,
+                    "contrarian_bias": 0.9
+                },
+                "model_params": {
+                    "dqn_layers": [256, 128, 64],
+                    "learning_rate": 0.001,
+                    "discount_factor": 0.85,
+                    "exploration_rate": 0.2
+                }
+            },
+            {
+                "name": "LynchTrader",
+                "description": "Growth-focused with strong fundamental analysis",
+                "enabled": true,
+                "symbols": ["SOL/USDT", "AVAX/USDT", "MATIC/USDT", "DOT/USDT", "ATOM/USDT"],
+                "timeframe": "1d",
+                "risk_tolerance": "medium",
+                "trading_style": "growth",
+                "holding_period": "long",
+                "personality_traits": {
+                    "patience": 0.7,
+                    "fundamental_focus": 0.9,
+                    "growth_bias": 0.9,
+                    "diversification": 0.7,
+                    "adaptability": 0.8
+                },
+                "model_params": {
+                    "dqn_layers": [128, 64, 32],
+                    "learning_rate": 0.0003,
+                    "discount_factor": 0.92,
+                    "exploration_rate": 0.12
+                }
+            },
+            {
+                "name": "SimonsTrader",
+                "description": "Quantitative, high-frequency trader with statistical models",
+                "enabled": true,
+                "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "FTM/USDT"],
+                "timeframe": "15m",
+                "risk_tolerance": "high",
+                "trading_style": "quant",
+                "holding_period": "short",
+                "personality_traits": {
+                    "patience": 0.3,
+                    "data_driven": 0.9,
+                    "precision": 0.9,
+                    "adaptability": 0.7,
+                    "speed_focus": 0.9
+                },
+                "model_params": {
+                    "dqn_layers": [512, 256, 128],
+                    "learning_rate": 0.001,
+                    "discount_factor": 0.8,
+                    "exploration_rate": 0.25
+                }
+            }
+        ],
+        "execution_agent": {
+            "name": "ExecutionAgent",
+            "enabled": true,
+            "max_slippage": 0.01
+        },
+        "data_agent": {
+            "name": "DataCollectionAgent",
+            "enabled": true,
+            "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"]
+        }
+    },
+    "backtesting": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "data_source": "csv",
+        "data_directory": "data/historical"
+    },
+    "optimization": {
+        "method": "grid",
+        "metric": "sharpe_ratio",
+        "max_runs": 100
+    },
+    "agent_communication": {
+        "enabled": true,
+        "communication_interval": 10,
+        "messaging_channels": ["market_analysis", "trade_ideas", "risk_warnings"]
+    },
+    "reinforcement_learning": {
+        "enabled": true,
+        "framework": "tensorflow",
+        "training_interval": 300,
+        "batch_size": 64,
+        "memory_size": 10000,
+        "save_models_interval": 3600
+    },
+    "system": {
+        "save_interval": 300,
+        "db_path": "data/trader.db",
+        "cache_dir": "data/cache"
+    }
+} 

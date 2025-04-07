@@ -1,8 +1,4 @@
-# Environment variables
-.env
-.env.*
-
-# Python
+# Python bytecode
 __pycache__/
 *.py[cod]
 *$py.class
@@ -24,20 +20,57 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
-venv/
+# Environment
+.env
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
 
-# IDE
+# Data and logs
+*.log
+logs/
+data/
+db/*.db
+
+# IDE files
 .idea/
 .vscode/
 *.swp
 *.swo
-
-# Logs
-*.log
-
-# Local development settings
+*~
 .DS_Store
-Thumbs.db 
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Distribution / packaging
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Local run-specific files
+trader.log
+*.pid 

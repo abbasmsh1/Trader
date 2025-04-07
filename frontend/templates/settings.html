@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trader - Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-dark sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <h4 class="text-white">Crypto Trader</h4>
+                        {% if demo_mode %}
+                        <span class="badge bg-warning">Demo Mode</span>
+                        {% endif %}
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <i class="bi bi-speedometer2 me-2"></i>
+                                Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('portfolio') }}">
+                                <i class="bi bi-wallet2 me-2"></i>
+                                Portfolio
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('trades') }}">
+                                <i class="bi bi-arrow-left-right me-2"></i>
+                                Trade History
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('settings') }}">
+                                <i class="bi bi-gear me-2"></i>
+                                Settings
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <hr class="text-white-50">
+                    
+                    <div class="px-3 py-2">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="text-white mb-0">System Status</h6>
+                            <span id="status-indicator" class="badge bg-danger">Stopped</span>
+                        </div>
+                        <button id="start-system" class="btn btn-sm btn-success w-100 mb-2">
+                            <i class="bi bi-play-fill"></i> Start System
+                        </button>
+                        <button id="stop-system" class="btn btn-sm btn-danger w-100" disabled>
+                            <i class="bi bi-stop-fill"></i> Stop System
+                        </button>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Settings</h1>
+                    <div class="btn-toolbar mb-2 mb-md-0">
+                        <button type="button" class="btn btn-sm btn-primary" id="save-all-settings">
+                            <i class="bi bi-save"></i> Save All Changes
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Settings Navigation -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <ul class="nav nav-tabs" id="settingsTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab" aria-controls="general" aria-selected="true">
+                                    <i class="bi bi-gear me-2"></i>General
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab" aria-controls="trading" aria-selected="false">
+                                    <i class="bi bi-graph-up me-2"></i>Trading
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="risk-tab" data-bs-toggle="tab" data-bs-target="#risk" type="button" role="tab" aria-controls="risk" aria-selected="false">
+                                    <i class="bi bi-shield-check me-2"></i>Risk Management
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="exchanges-tab" data-bs-toggle="tab" data-bs-target="#exchanges" type="button" role="tab" aria-controls="exchanges" aria-selected="false">
+                                    <i class="bi bi-building me-2"></i>Exchanges
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="notifications-tab" data-bs-toggle="tab" data-bs-target="#notifications" type="button" role="tab" aria-controls="notifications" aria-selected="false">
+                                    <i class="bi bi-bell me-2"></i>Notifications
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <!-- Settings Content -->
+                <div class="tab-content" id="settingsTabContent">
+                
+                    <!-- General Settings -->
+                    <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">System Settings</h6>
+                            </div>
+                            <div class="card-body">
+                                <form id="general-settings-form">
+                                    <div class="mb-3">
+                                        <label for="system-name" class="form-label">System Name</label>
+                                        <input type="text" class="form-control" id="system-name" value="Crypto Trader">
+                                        <div class="form-text">A name to identify your trading system</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="base-currency" class="form-label">Base Currency</label>
+                                        <select class="form-select" id="base-currency">
+                                            <option value="USDT" selected>Tether (USDT)</option>
+                                            <option value="USD">US Dollar (USD)</option>
+                                            <option value="USDC">USD Coin (USDC)</option>
+                                            <option value="EUR">Euro (EUR)</option>
+                                        </select>
+                                        <div class="form-text">The currency used for valuation and portfolio calculation</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="initial-balance" class="form-label">Initial Balance</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="number" class="form-control" id="initial-balance" value="10000" min="0" step="100">
+                                        </div>
+                                        <div class="form-text">Starting capital for the trading system</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="update-interval" class="form-label">Update Interval (seconds)</label>
+                                        <input type="number" class="form-control" id="update-interval" value="5" min="1" max="300">
+                                        <div class="form-text">How often the system should update market data and make decisions</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="logging-enabled" checked>
+                                            <label class="form-check-label" for="logging-enabled">Enable Detailed Logging</label>
+                                        </div>
+                                        <div class="form-text">Log detailed information about system operations</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="auto-start" checked>
+                                            <label class="form-check-label" for="auto-start">Auto-start System</label>
+                                        </div>
+                                        <div class="form-text">Automatically start the trading system when the application launches</div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                        
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">UI Settings</h6>
+                            </div>
+                            <div class="card-body">
+                                <form id="ui-settings-form">
+                                    <div class="mb-3">
+                                        <label for="theme" class="form-label">Theme</label>
+                                        <select class="form-select" id="theme">
+                                            <option value="light" selected>Light</option>
+                                            <option value="dark">Dark</option>
+                                            <option value="system">System Default</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="chart-style" class="form-label">Chart Style</label>
+                                        <select class="form-select" id="chart-style">
+                                            <option value="line" selected>Line</option>
+                                            <option value="candle">Candlestick</option>
+                                            <option value="ohlc">OHLC</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="real-time-updates" checked>
+                                            <label class="form-check-label" for="real-time-updates">Real-time Updates</label>
+                                        </div>
+                                        <div class="form-text">Enable real-time data updates in the UI</div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Trading Settings -->
+                    <div class="tab-pane fade" id="trading" role="tabpanel" aria-labelledby="trading-tab">
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Trading Parameters</h6>
+                            </div>
+                            <div class="card-body">
+                                <form id="trading-settings-form">
+                                    <div class="mb-3">
+                                        <label for="trading-mode" class="form-label">Trading Mode</label>
+                                        <select class="form-select" id="trading-mode">
+                                            <option value="paper" selected>Paper Trading</option>
+                                            <option value="live">Live Trading</option>
+                                            <option value="backtest">Backtesting</option>
+                                        </select>
+                                        <div class="form-text">Select the operating mode for the trading system</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="strategy" class="form-label">Primary Strategy</label>
+                                        <select class="form-select" id="strategy">
+                                            <option value="trend_following" selected>Trend Following</option>
+                                            <option value="mean_reversion">Mean Reversion</option>
+                                            <option value="breakout">Breakout</option>
+                                            <option value="multi_strategy">Multi-Strategy</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Tradable Assets</label>
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="asset-btc" checked>
+                                                    <label class="form-check-label" for="asset-btc">Bitcoin (BTC)</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="asset-eth" checked>
+                                                    <label class="form-check-label" for="asset-eth">Ethereum (ETH)</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="asset-sol" checked>
+                                                    <label class="form-check-label" for="asset-sol">Solana (SOL)</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="asset-bnb" checked>
+                                                    <label class="form-check-label" for="asset-bnb">Binance Coin (BNB)</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <a href="#" class="link-primary">Manage Additional Assets</a>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="timeframe" class="form-label">Default Timeframe</label>
+                                        <select class="form-select" id="timeframe">
+                                            <option value="1m">1 minute</option>
+                                            <option value="5m">5 minutes</option>
+                                            <option value="15m" selected>15 minutes</option>
+                                            <option value="1h">1 hour</option>
+                                            <option value="4h">4 hours</option>
+                                            <option value="1d">1 day</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="auto-rebalance" checked>
+                                            <label class="form-check-label" for="auto-rebalance">Automatic Portfolio Rebalancing</label>
+                                        </div>
+                                        <div class="form-text">Automatically rebalance portfolio based on allocation targets</div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Risk Management Settings -->
+                    <div class="tab-pane fade" id="risk" role="tabpanel" aria-labelledby="risk-tab">
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Risk Parameters</h6>
+                            </div>
+                            <div class="card-body">
+                                <form id="risk-settings-form">
+                                    <div class="mb-3">
+                                        <label for="max-position-size" class="form-label">Max Position Size (% of Portfolio)</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="max-position-size" value="20" min="1" max="100">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        <div class="form-text">Maximum percentage of portfolio value for a single position</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="stop-loss" class="form-label">Default Stop Loss</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="stop-loss" value="5" min="0.1" max="50" step="0.1">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        <div class="form-text">Default stop loss percentage for each trade</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="take-profit" class="form-label">Default Take Profit</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="take-profit" value="15" min="0.1" max="100" step="0.1">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        <div class="form-text">Default take profit percentage for each trade</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label for="max-drawdown" class="form-label">Max Drawdown Tolerance</label>
+                                        <div class="input-group">
+                                            <input type="number" class="form-control" id="max-drawdown" value="25" min="1" max="100">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                        <div class="form-text">Maximum acceptable portfolio drawdown before reducing position sizes</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="trailing-stops" checked>
+                                            <label class="form-check-label" for="trailing-stops">Use Trailing Stops</label>
+                                        </div>
+                                        <div class="form-text">Use trailing stops to lock in profits as trades move in your favor</div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="auto-adjust-risk" checked>
+                                            <label class="form-check-label" for="auto-adjust-risk">Automatic Risk Adjustment</label>
+                                        </div>
+                                        <div class="form-text">Automatically adjust risk based on market volatility and recent performance</div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Exchange Settings -->
+                    <div class="tab-pane fade" id="exchanges" role="tabpanel" aria-labelledby="exchanges-tab">
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Exchange Connections</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h5>Binance</h5>
+                                        <span class="badge bg-success">Connected</span>
+                                    </div>
+                                    <form id="binance-form">
+                                        <div class="mb-3">
+                                            <label for="binance-api-key" class="form-label">API Key</label>
+                                            <input type="password" class="form-control" id="binance-api-key" value="••••••••••••••••••••••">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="binance-api-secret" class="form-label">API Secret</label>
+                                            <input type="password" class="form-control" id="binance-api-secret" value="••••••••••••••••••••••">
+                                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="binance-enable-trading" checked>
+                                                <label class="form-check-label" for="binance-enable-trading">Enable Trading</label>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex">
+                                            <button type="button" class="btn btn-primary me-2">Update</button>
+                                            <button type="button" class="btn btn-outline-danger">Disconnect</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <hr>
+                                
+                                <div class="mb-4">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h5>Coinbase Pro</h5>
+                                        <span class="badge bg-secondary">Not Connected</span>
+                                    </div>
+                                    <form id="coinbase-form">
+                                        <div class="mb-3">
+                                            <label for="coinbase-api-key" class="form-label">API Key</label>
+                                            <input type="text" class="form-control" id="coinbase-api-key">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="coinbase-api-secret" class="form-label">API Secret</label>
+                                            <input type="password" class="form-control" id="coinbase-api-secret">
+                                        </div>
+                                        <div class="mb-3">
+                                            <label for="coinbase-passphrase" class="form-label">Passphrase</label>
+                                            <input type="password" class="form-control" id="coinbase-passphrase">
+                                        </div>
+                                        <div class="mb-3">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="coinbase-enable-trading" disabled>
+                                                <label class="form-check-label" for="coinbase-enable-trading">Enable Trading</label>
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-primary">Connect</button>
+                                    </form>
+                                </div>
+                                
+                                <hr>
+                                
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <h5>Add New Exchange</h5>
+                                    </div>
+                                    <select class="form-select mb-3" id="new-exchange">
+                                        <option selected disabled>Select Exchange</option>
+                                        <option value="kraken">Kraken</option>
+                                        <option value="ftx">FTX</option>
+                                        <option value="kucoin">KuCoin</option>
+                                        <option value="gemini">Gemini</option>
+                                    </select>
+                                    <button type="button" class="btn btn-outline-primary">Add Exchange</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Notification Settings -->
+                    <div class="tab-pane fade" id="notifications" role="tabpanel" aria-labelledby="notifications-tab">
+                        <div class="card shadow mb-4">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Notification Settings</h6>
+                            </div>
+                            <div class="card-body">
+                                <form id="notification-settings-form">
+                                    <div class="mb-3">
+                                        <label class="form-label">Email Notifications</label>
+                                        <input type="email" class="form-control" id="notification-email" placeholder="your@email.com">
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="form-label d-block">Notify Me About</label>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="notify-trades" checked>
+                                            <label class="form-check-label" for="notify-trades">Executed Trades</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="notify-profit" checked>
+                                            <label class="form-check-label" for="notify-profit">Profit/Loss Summary</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="notify-errors" checked>
+                                            <label class="form-check-label" for="notify-errors">System Errors</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="notify-opportunities">
+                                            <label class="form-check-label" for="notify-opportunities">Trading Opportunities</label>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Telegram Notifications</label>
+                                        <div class="input-group">
+                                            <input type="text" class="form-control" id="telegram-chat-id" placeholder="Telegram Chat ID">
+                                            <button class="btn btn-outline-primary" type="button">Connect</button>
+                                        </div>
+                                        <div class="form-text">Connect your Telegram to receive real-time notifications</div>
+                                    </div>
+                                    
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="push-notifications">
+                                        <label class="form-check-label" for="push-notifications">Enable Browser Push Notifications</label>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="d-flex justify-content-end mb-4">
+                    <button type="button" class="btn btn-secondary me-2">Reset to Defaults</button>
+                    <button type="button" class="btn btn-primary" id="footer-save-settings">Save All Changes</button>
+                </div>
+                
+            </main>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+</body>
+</html> 

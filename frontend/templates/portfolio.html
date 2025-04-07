@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trader - Portfolio</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.3/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <nav id="sidebar" class="col-md-3 col-lg-2 d-md-block bg-dark sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <h4 class="text-white">Crypto Trader</h4>
+                        {% if demo_mode %}
+                        <span class="badge bg-warning">Demo Mode</span>
+                        {% endif %}
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('index') }}">
+                                <i class="bi bi-speedometer2 me-2"></i>
+                                Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link active" href="{{ url_for('portfolio') }}">
+                                <i class="bi bi-wallet2 me-2"></i>
+                                Portfolio
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('trades') }}">
+                                <i class="bi bi-arrow-left-right me-2"></i>
+                                Trade History
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="{{ url_for('settings') }}">
+                                <i class="bi bi-gear me-2"></i>
+                                Settings
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <hr class="text-white-50">
+                    
+                    <div class="px-3 py-2">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="text-white mb-0">System Status</h6>
+                            <span id="status-indicator" class="badge bg-danger">Stopped</span>
+                        </div>
+                        <button id="start-system" class="btn btn-sm btn-success w-100 mb-2">
+                            <i class="bi bi-play-fill"></i> Start System
+                        </button>
+                        <button id="stop-system" class="btn btn-sm btn-danger w-100" disabled>
+                            <i class="bi bi-stop-fill"></i> Stop System
+                        </button>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- Main content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                    <h1 class="h2">Portfolio</h1>
+                    <div class="btn-toolbar mb-2 mb-md-0">
+                        <button type="button" class="btn btn-sm btn-outline-secondary me-2" id="refresh-btn">
+                            <i class="bi bi-arrow-clockwise"></i> Refresh
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Portfolio Summary -->
+                <div class="row mb-4">
+                    <div class="col-md-4 mb-4">
+                        <div class="card shadow h-100">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Portfolio Summary</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <h4 class="text-primary">$<span id="total-value">{{ "%.2f"|format(valuation.total_value) }}</span></h4>
+                                    <p class="text-muted mb-0">Total Portfolio Value</p>
+                                </div>
+                                <hr>
+                                <div class="mb-3">
+                                    <p class="mb-1">Base Currency (USDT): $<span id="base-currency">{{ "%.2f"|format(balances.get("USDT", 0)) }}</span></p>
+                                    <p class="mb-1">Assets Value: $<span id="assets-value">{{ "%.2f"|format(valuation.total_value - balances.get("USDT", 0)) }}</span></p>
+                                    <p class="mb-1">Number of Assets: <span id="num-assets">{{ balances|length - 1 if "USDT" in balances else balances|length }}</span></p>
+                                </div>
+                                <hr>
+                                <div>
+                                    <h6>Asset Allocation</h6>
+                                    <div class="progress-stacked mb-3">
+                                        {% for asset, data in valuation.holdings.items() %}
+                                            {% if asset != "USDT" and data.value > 0 %}
+                                                <div class="progress-bar bg-{{ loop.index % 5 + 1 }}" role="progressbar" style="width: {{ (data.value / valuation.total_value * 100)|round|int }}%" 
+                                                     aria-valuenow="{{ (data.value / valuation.total_value * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100" 
+                                                     title="{{ asset }}: {{ (data.value / valuation.total_value * 100)|round|int }}%"></div>
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% if balances.get("USDT", 0) > 0 %}
+                                            <div class="progress-bar bg-light" role="progressbar" style="width: {{ (balances.get('USDT', 0) / valuation.total_value * 100)|round|int }}%" 
+                                                 aria-valuenow="{{ (balances.get('USDT', 0) / valuation.total_value * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100" 
+                                                 title="USDT: {{ (balances.get('USDT', 0) / valuation.total_value * 100)|round|int }}%"></div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="small">
+                                        {% for asset, data in valuation.holdings.items() %}
+                                            {% if asset != "USDT" and data.value > 0 %}
+                                                <span class="badge rounded-pill bg-{{ loop.index % 5 + 1 }} me-1">{{ asset }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                        {% if balances.get("USDT", 0) > 0 %}
+                                            <span class="badge rounded-pill bg-light text-dark">USDT</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-8 mb-4">
+                        <div class="card shadow h-100">
+                            <div class="card-header py-3">
+                                <h6 class="m-0 font-weight-bold">Portfolio Holdings</h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover">
+                                        <thead>
+                                            <tr>
+                                                <th>Asset</th>
+                                                <th>Balance</th>
+                                                <th>Current Price</th>
+                                                <th>Value</th>
+                                                <th>Portfolio %</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="portfolio-table">
+                                            {% for asset, amount in balances.items() %}
+                                                {% if amount > 0 %}
+                                                    <tr>
+                                                        <td><strong>{{ asset }}</strong></td>
+                                                        <td>{{ amount }}</td>
+                                                        {% if asset == "USDT" %}
+                                                            <td>$1.00</td>
+                                                            <td>${{ "%.2f"|format(amount) }}</td>
+                                                            <td>{{ "%.1f"|format(amount / valuation.total_value * 100) }}%</td>
+                                                        {% else %}
+                                                            <td>${{ "%.2f"|format(valuation.holdings[asset].price) }}</td>
+                                                            <td>${{ "%.2f"|format(valuation.holdings[asset].value) }}</td>
+                                                            <td>{{ "%.1f"|format(valuation.holdings[asset].value / valuation.total_value * 100) }}%</td>
+                                                        {% endif %}
+                                                        <td>
+                                                            {% if demo_mode and asset != "USDT" %}
+                                                                <button class="btn btn-sm btn-danger sell-btn" data-asset="{{ asset }}">Sell</button>
+                                                            {% elif demo_mode and asset == "USDT" %}
+                                                                <button class="btn btn-sm btn-success buy-btn">Buy</button>
+                                                            {% else %}
+                                                                <button class="btn btn-sm btn-outline-secondary">Details</button>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Historical Performance -->
+                <div class="row">
+                    <div class="col-12 mb-4">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                                <h6 class="m-0 font-weight-bold">Performance Metrics</h6>
+                                <div class="dropdown no-arrow">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="timeframeDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Last 7 Days
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="timeframeDropdown">
+                                        <li><a class="dropdown-item" href="#">Last 24 Hours</a></li>
+                                        <li><a class="dropdown-item" href="#">Last 7 Days</a></li>
+                                        <li><a class="dropdown-item" href="#">Last 30 Days</a></li>
+                                        <li><a class="dropdown-item" href="#">All Time</a></li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3 col-sm-6 mb-4">
+                                        <div class="card border-left-primary shadow h-100 py-2">
+                                            <div class="card-body">
+                                                <div class="row no-gutters align-items-center">
+                                                    <div class="col mr-2">
+                                                        <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                                            Total Return</div>
+                                                        <div class="h5 mb-0 font-weight-bold">+2.45%</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-3 col-sm-6 mb-4">
+                                        <div class="card border-left-success shadow h-100 py-2">
+                                            <div class="card-body">
+                                                <div class="row no-gutters align-items-center">
+                                                    <div class="col mr-2">
+                                                        <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                                            Profit/Loss</div>
+                                                        <div class="h5 mb-0 font-weight-bold">+$210.32</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-3 col-sm-6 mb-4">
+                                        <div class="card border-left-info shadow h-100 py-2">
+                                            <div class="card-body">
+                                                <div class="row no-gutters align-items-center">
+                                                    <div class="col mr-2">
+                                                        <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                                            Volatility</div>
+                                                        <div class="h5 mb-0 font-weight-bold">2.1%</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-3 col-sm-6 mb-4">
+                                        <div class="card border-left-warning shadow h-100 py-2">
+                                            <div class="card-body">
+                                                <div class="row no-gutters align-items-center">
+                                                    <div class="col mr-2">
+                                                        <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                                            Drawdown</div>
+                                                        <div class="h5 mb-0 font-weight-bold">-1.2%</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <p class="text-muted small">Note: In demo mode, performance metrics are simulated. In live mode, they represent actual trading performance.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Sell Modal (for Demo Mode) -->
+                {% if demo_mode %}
+                <div class="modal fade" id="sellModal" tabindex="-1" aria-labelledby="sellModalLabel" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="sellModalLabel">Sell Asset</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="modal-sell-form">
+                                    <input type="hidden" id="modal-sell-asset">
+                                    <div class="mb-3">
+                                        <label for="modal-sell-amount" class="form-label">Amount to sell</label>
+                                        <input type="number" class="form-control" id="modal-sell-amount" min="0" step="0.0001">
+                                        <div class="form-text">
+                                            Available: <span id="modal-asset-balance">0</span> <span id="modal-asset-symbol"></span>
+                                            <a href="#" id="sell-all-link">Sell All</a>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Estimated value</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text">$</span>
+                                            <input type="text" class="form-control" id="modal-sell-value" readonly>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="button" class="btn btn-danger" id="confirm-sell-btn">Sell</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </main>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='js/portfolio.js') }}"></script>
+</body>
+</html> 

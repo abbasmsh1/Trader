@@ -1,0 +1,231 @@
+/* Custom styles for Crypto Trader frontend */
+
+/* General Styles */
+body {
+  font-size: .875rem;
+  background-color: #f8f9fa;
+}
+
+.font-weight-bold {
+  font-weight: 600 !important;
+}
+
+/* Sidebar */
+.sidebar {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 100;
+  padding: 48px 0 0;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, .1);
+}
+
+.sidebar-sticky {
+  position: relative;
+  top: 0;
+  height: calc(100vh - 48px);
+  padding-top: .5rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.sidebar .nav-link {
+  font-weight: 500;
+  color: rgba(255, 255, 255, .75);
+  padding: .75rem 1rem;
+}
+
+.sidebar .nav-link.active {
+  color: #fff;
+  background-color: rgba(255, 255, 255, .1);
+}
+
+.sidebar .nav-link:hover {
+  color: #fff;
+}
+
+/* Cards */
+.card {
+  box-shadow: 0 .15rem 1.75rem 0 rgba(58, 59, 69, .1) !important;
+  border: none;
+  border-radius: 0.35rem;
+  margin-bottom: 1.5rem;
+}
+
+.card-header {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e3e6f0;
+}
+
+.card-body {
+  padding: 1.25rem;
+}
+
+/* Card borders */
+.border-left-primary {
+  border-left: 0.25rem solid #4e73df !important;
+}
+
+.border-left-success {
+  border-left: 0.25rem solid #1cc88a !important;
+}
+
+.border-left-info {
+  border-left: 0.25rem solid #36b9cc !important;
+}
+
+.border-left-warning {
+  border-left: 0.25rem solid #f6c23e !important;
+}
+
+.border-left-danger {
+  border-left: 0.25rem solid #e74a3b !important;
+}
+
+/* Background colors for progress bars */
+.bg-1 {
+  background-color: #4e73df !important;
+}
+
+.bg-2 {
+  background-color: #1cc88a !important;
+}
+
+.bg-3 {
+  background-color: #36b9cc !important;
+}
+
+.bg-4 {
+  background-color: #f6c23e !important;
+}
+
+.bg-5 {
+  background-color: #e74a3b !important;
+}
+
+/* Chart area */
+.chart-area {
+  position: relative;
+  height: 20rem;
+  width: 100%;
+}
+
+.chart-area canvas {
+  max-height: 100%;
+}
+
+/* Tables */
+.table-responsive {
+  overflow-x: auto;
+}
+
+.table th {
+  font-weight: 600;
+  background-color: #f8f9fa;
+}
+
+.table-hover tbody tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* Dashboard cards */
+.card .no-gutters {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.card .no-gutters .col,
+.card .no-gutters [class*="col-"] {
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.card .text-xs {
+  font-size: .7rem;
+}
+
+.card .text-gray-300 {
+  color: #dddfeb !important;
+}
+
+/* Buttons */
+.btn-outline-secondary {
+  border-color: #d1d3e2;
+  color: #6e707e;
+}
+
+.btn-outline-secondary:hover {
+  background-color: #eaecf4;
+  border-color: #d1d3e2;
+  color: #6e707e;
+}
+
+/* Settings tabs */
+.nav-tabs .nav-link {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #6e707e;
+}
+
+.nav-tabs .nav-link.active {
+  border-bottom: 2px solid #4e73df;
+  color: #4e73df;
+  font-weight: 600;
+}
+
+.nav-tabs .nav-link:hover {
+  border-color: transparent;
+  border-bottom: 2px solid #4e73df;
+}
+
+/* Trade table colors */
+.table-success {
+  background-color: rgba(28, 200, 138, 0.1) !important;
+}
+
+.table-danger {
+  background-color: rgba(231, 74, 59, 0.1) !important;
+}
+
+/* Form controls */
+.form-control:focus,
+.form-select:focus {
+  border-color: #bac8f3;
+  box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.1);
+}
+
+/* Misc */
+.dropdown-menu {
+  font-size: .85rem;
+}
+
+.dropdown-item:active {
+  background-color: #4e73df;
+}
+
+/* Progress bar stacked */
+.progress-stacked {
+  height: 20px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.progress-stacked .progress-bar {
+  transition: width 0.6s ease;
+}
+
+/* Responsive fixes */
+@media (max-width: 767.98px) {
+  .sidebar {
+    top: 5rem;
+  }
+  
+  .chart-area {
+    height: 15rem;
+  }
+  
+  .table-responsive {
+    max-height: 400px;
+  }
+} 

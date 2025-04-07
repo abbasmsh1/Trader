@@ -1,258 +1,259 @@
-from abc import ABC, abstractmethod
-import numpy as np
-from typing import Dict, List, Optional, Literal, Any
-import pandas as pd
-from data.wallet import Wallet
+"""
+Base Agent Module - Foundation for all trading agents in the system.
 
-# Define trading actions as constants
-TradingAction = Literal[
-    'STRONG_BUY',    # Very confident buy signal
-    'BUY',           # Standard buy signal
-    'SCALE_IN',      # Gradually increase position
-    'WATCH',         # Monitor for opportunities
-    'HOLD',          # No action needed
-    'SCALE_OUT',     # Gradually decrease position
-    'SELL',          # Standard sell signal
-    'STRONG_SELL'    # Very confident sell signal
-]
+This module provides the abstract base class that all agents must inherit from,
+ensuring a consistent interface across different agent types.
+"""
+from abc import ABC, abstractmethod
+import logging
+from typing import Dict, Any, Optional, List, Tuple
+import uuid
+import time
+import json
 
 class BaseAgent(ABC):
-    def __init__(self, name: str, personality: str, risk_tolerance: float = 0.5, timeframe: str = '1h'):
+    """
+    Abstract base class for all trading agents in the system.
+    
+    Defines the common interface and functionality that all agents must implement.
+    Handles agent identification, state management, and logging.
+    """
+    
+    def __init__(self, 
+                 name: str, 
+                 description: str,
+                 agent_type: str,
+                 config: Dict[str, Any],
+                 parent_id: Optional[str] = None):
         """
-        Initialize the base trading agent.
+        Initialize the base agent.
         
         Args:
-            name (str): Name of the trading agent
-            personality (str): Trading personality description
-            risk_tolerance (float): Risk tolerance level between 0 and 1
-            timeframe (str): Trading timeframe (e.g., '1h', '4h', '1d')
+            name: Human-readable name of the agent
+            description: Short description of the agent's purpose
+            agent_type: Type classification of the agent
+            config: Configuration parameters for the agent
+            parent_id: ID of the parent agent if part of a hierarchy
         """
+        self.id = str(uuid.uuid4())
         self.name = name
-        self.personality = personality
-        self.risk_tolerance = max(0.0, min(1.0, risk_tolerance))
-        self.timeframe = timeframe
-        self.portfolio: Dict[str, float] = {}
-        self.trading_history: List[Dict] = []
-        self.strategy_preferences: Dict[str, float] = {}
-        self.market_beliefs: Dict[str, str] = {}
-        self.wallet = Wallet(initial_balance_usdt=20.0)
+        self.description = description
+        self.agent_type = agent_type
+        self.config = config
+        self.parent_id = parent_id
+        self.children: List[BaseAgent] = []
         
-        # Action thresholds for different signal types
-        self.action_thresholds = {
-            'STRONG_BUY': 0.9,    # Very high confidence threshold
-            'BUY': 0.7,           # Standard buy threshold
-            'SCALE_IN': 0.6,      # Gradual position increase threshold
-            'WATCH': 0.4,         # Monitoring threshold
-            'HOLD': 0.0,          # Default action
-            'SCALE_OUT': 0.6,     # Gradual position decrease threshold
-            'SELL': 0.7,          # Standard sell threshold
-            'STRONG_SELL': 0.9    # Very high confidence for selling
+        # Agent state
+        self.active = True
+        self.created_at = time.time()
+        self.last_run = 0
+        self.last_training = 0
+        self.training_iterations = 0
+        
+        # Performance metrics
+        self.performance_metrics = {
+            "total_decisions": 0,
+            "successful_decisions": 0,
+            "total_trades": 0,
+            "profitable_trades": 0,
+            "total_profit": 0.0,
+            "max_drawdown": 0.0,
+            "sharpe_ratio": 0.0
         }
         
-    @abstractmethod
-    def analyze_market(self, market_data: pd.DataFrame) -> Dict[str, Any]:
+        # Setup logging
+        self.logger = logging.getLogger(f"agent.{self.agent_type}.{self.id}")
+
+    def add_child(self, agent: 'BaseAgent') -> None:
         """
-        Analyze market data and generate insights.
+        Add a child agent to this agent.
         
         Args:
-            market_data (pd.DataFrame): Historical market data
+            agent: The child agent to add
+        """
+        agent.parent_id = self.id
+        self.children.append(agent)
+        self.logger.info(f"Added child agent {agent.name} ({agent.id})")
+    
+    def remove_child(self, agent_id: str) -> bool:
+        """
+        Remove a child agent from this agent.
+        
+        Args:
+            agent_id: ID of the child agent to remove
             
         Returns:
-            Dict: Analysis results and insights
+            True if agent was removed, False if not found
         """
-        pass
+        for i, agent in enumerate(self.children):
+            if agent.id == agent_id:
+                self.children.pop(i)
+                self.logger.info(f"Removed child agent {agent.name} ({agent.id})")
+                return True
+        return False
     
-    @abstractmethod
-    def generate_signal(self, analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def get_child(self, agent_id: str) -> Optional['BaseAgent']:
         """
-        Generate trading signals based on analysis.
+        Get a child agent by ID.
         
         Args:
-            analysis (Dict): Market analysis results
+            agent_id: ID of the child agent
             
         Returns:
-            Dict: Trading signal with action, price, and confidence
+            The child agent if found, None otherwise
         """
-        pass
+        for agent in self.children:
+            if agent.id == agent_id:
+                return agent
+        return None
     
-    def determine_action(self, confidence: float, trend_direction: int) -> TradingAction:
+    def get_all_descendants(self) -> List['BaseAgent']:
         """
-        Determine the appropriate trading action based on confidence and trend.
-        
-        Args:
-            confidence (float): Signal confidence level (0 to 1)
-            trend_direction (int): 1 for uptrend, -1 for downtrend
-            
-        Returns:
-            TradingAction: The determined trading action
-        """
-        if trend_direction > 0:  # Uptrend
-            if confidence >= self.action_thresholds['STRONG_BUY']:
-                return 'STRONG_BUY'
-            elif confidence >= self.action_thresholds['BUY']:
-                return 'BUY'
-            elif confidence >= self.action_thresholds['SCALE_IN']:
-                return 'SCALE_IN'
-            elif confidence >= self.action_thresholds['WATCH']:
-                return 'WATCH'
-            else:
-                return 'HOLD'
-        elif trend_direction < 0:  # Downtrend
-            if confidence >= self.action_thresholds['STRONG_SELL']:
-                return 'STRONG_SELL'
-            elif confidence >= self.action_thresholds['SELL']:
-                return 'SELL'
-            elif confidence >= self.action_thresholds['SCALE_OUT']:
-                return 'SCALE_OUT'
-            elif confidence >= self.action_thresholds['WATCH']:
-                return 'WATCH'
-            else:
-                return 'HOLD'
-        else:  # No clear trend
-            return 'WATCH'
-    
-    def calculate_position_size(self, signal: Dict, available_capital: float) -> float:
-        """
-        Calculate the position size based on risk tolerance, signal confidence, and action type.
-        
-        Args:
-            signal (Dict): Trading signal
-            available_capital (float): Available capital for trading
-            
-        Returns:
-            float: Recommended position size
-        """
-        confidence = signal.get('confidence', 0.5)
-        action = signal.get('action', 'HOLD')
-        
-        # Adjust position size based on action type
-        action_multipliers = {
-            'STRONG_BUY': 1.0,
-            'BUY': 0.8,
-            'SCALE_IN': 0.4,
-            'WATCH': 0.0,
-            'HOLD': 0.0,
-            'SCALE_OUT': 0.4,
-            'SELL': 0.8,
-            'STRONG_SELL': 1.0
-        }
-        
-        action_multiplier = action_multipliers.get(action, 0.0)
-        risk_adjusted_size = available_capital * self.risk_tolerance * confidence * action_multiplier
-        return risk_adjusted_size
-    
-    def update_portfolio(self, trade: Dict):
-        """
-        Update the agent's portfolio after a trade.
-        
-        Args:
-            trade (Dict): Trade details including asset, amount, and price
-        """
-        asset = trade['asset']
-        amount = trade['amount']
-        self.portfolio[asset] = self.portfolio.get(asset, 0) + amount
-        self.trading_history.append(trade)
-    
-    def get_performance_metrics(self) -> Dict:
-        """
-        Calculate agent's performance metrics.
+        Get all descendant agents recursively.
         
         Returns:
-            Dict: Performance metrics including returns, win rate, etc.
+            List of all descendant agents
         """
-        if not self.trading_history:
-            return {'total_trades': 0, 'win_rate': 0.0, 'total_return': 0.0}
+        descendants = []
+        for child in self.children:
+            descendants.append(child)
+            descendants.extend(child.get_all_descendants())
+        return descendants
+    
+    def activate(self) -> None:
+        """Activate this agent and log the event."""
+        self.active = True
+        self.logger.info(f"Agent {self.name} activated")
+    
+    def deactivate(self) -> None:
+        """Deactivate this agent and log the event."""
+        self.active = False
+        self.logger.info(f"Agent {self.name} deactivated")
+    
+    def update_config(self, new_config: Dict[str, Any]) -> None:
+        """
+        Update the agent's configuration.
         
-        total_trades = len(self.trading_history)
-        profitable_trades = sum(1 for trade in self.trading_history if trade.get('profit', 0) > 0)
-        win_rate = profitable_trades / total_trades if total_trades > 0 else 0
-        total_return = sum(trade.get('profit', 0) for trade in self.trading_history)
+        Args:
+            new_config: New configuration parameters to apply
+        """
+        self.config.update(new_config)
+        self.logger.info(f"Updated configuration for agent {self.name}")
+    
+    def get_state(self) -> Dict[str, Any]:
+        """
+        Get the current state of the agent.
         
+        Returns:
+            Dictionary containing the agent's state
+        """
         return {
-            'total_trades': total_trades,
-            'win_rate': win_rate,
-            'total_return': total_return,
-            'personality': self.personality,
-            'strategy': self.strategy_preferences,
-            'market_view': self.market_beliefs
+            "id": self.id,
+            "name": self.name,
+            "description": self.description,
+            "agent_type": self.agent_type,
+            "parent_id": self.parent_id,
+            "active": self.active,
+            "created_at": self.created_at,
+            "last_run": self.last_run,
+            "last_training": self.last_training,
+            "training_iterations": self.training_iterations,
+            "performance_metrics": self.performance_metrics,
+            "config": self.config,
+            "children": [child.id for child in self.children]
         }
     
-    def set_strategy_preferences(self, preferences: Dict[str, float]):
-        """Set agent's strategy preferences."""
-        self.strategy_preferences = preferences
-    
-    def update_market_beliefs(self, beliefs: Dict[str, str]):
-        """Update agent's market beliefs."""
-        self.market_beliefs = beliefs
-    
-    def get_personality_traits(self) -> Dict[str, str]:
-        """Get agent's personality traits and characteristics."""
-        return {
-            'name': self.name,
-            'personality': self.personality,
-            'risk_tolerance': self.risk_tolerance,
-            'preferred_timeframe': self.timeframe,
-            'strategy_preferences': self.strategy_preferences,
-            'market_beliefs': self.market_beliefs
-        }
-    
-    def __str__(self) -> str:
-        return f"{self.name} ({self.personality}) - Risk: {self.risk_tolerance:.2f}, Timeframe: {self.timeframe}"
-    
-    def execute_trade(self, symbol: str, signal: Dict[str, Any], current_price: float) -> bool:
+    def save_state(self, storage_handler) -> None:
         """
-        Execute a trade based on the signal.
+        Save the agent's state using the provided storage handler.
         
         Args:
-            symbol (str): Trading pair symbol
-            signal (Dict): Trading signal with action and confidence
-            current_price (float): Current price of the asset
+            storage_handler: Object with a save method to persist the state
+        """
+        state = self.get_state()
+        storage_handler.save(f"agent_{self.id}", state)
+        self.logger.debug(f"Saved state for agent {self.name}")
+    
+    def load_state(self, storage_handler) -> bool:
+        """
+        Load the agent's state using the provided storage handler.
+        
+        Args:
+            storage_handler: Object with a load method to retrieve the state
             
         Returns:
-            bool: Whether the trade was executed successfully
+            True if state was loaded successfully, False otherwise
         """
-        action = signal.get('action', 'HOLD')
-        confidence = signal.get('confidence', 0.5)
-        
-        # Skip if action is HOLD or WATCH
-        if action in ['HOLD', 'WATCH']:
+        state = storage_handler.load(f"agent_{self.id}")
+        if not state:
             return False
             
-        # Determine trade direction and size
-        is_buy = action in ['STRONG_BUY', 'BUY', 'SCALE_IN']
-        is_sell = action in ['STRONG_SELL', 'SELL', 'SCALE_OUT']
+        # Update fields from loaded state
+        self.active = state.get("active", self.active)
+        self.last_run = state.get("last_run", self.last_run)
+        self.last_training = state.get("last_training", self.last_training)
+        self.training_iterations = state.get("training_iterations", self.training_iterations)
+        self.performance_metrics = state.get("performance_metrics", self.performance_metrics)
+        self.config = state.get("config", self.config)
         
-        if is_buy:
-            # Calculate position size based on available USDT
-            available_usdt = self.wallet.get_balance('USDT')
-            position_size_usdt = self.calculate_position_size(signal, available_usdt)
-            
-            if position_size_usdt > 0:
-                # Convert to asset amount
-                asset_amount = position_size_usdt / current_price
-                return self.wallet.execute_buy(symbol, asset_amount, current_price)
-                
-        elif is_sell:
-            # Calculate position size based on available asset
-            asset_symbol = symbol.split('/')[0]
-            available_asset = self.wallet.get_balance(asset_symbol)
-            
-            if available_asset > 0:
-                # Determine percentage to sell based on action
-                sell_percentage = 1.0 if action == 'STRONG_SELL' else 0.5 if action == 'SCALE_OUT' else 0.75
-                asset_amount = available_asset * sell_percentage
-                return self.wallet.execute_sell(symbol, asset_amount, current_price)
-                
-        return False
-        
-    def get_wallet_metrics(self, current_prices: Dict[str, float]) -> Dict:
+        self.logger.debug(f"Loaded state for agent {self.name}")
+        return True
+    
+    def record_training(self) -> None:
+        """Record that a training iteration has occurred."""
+        self.last_training = time.time()
+        self.training_iterations += 1
+        self.logger.info(f"Completed training iteration {self.training_iterations} for agent {self.name}")
+    
+    def get_training_status(self) -> Dict[str, Any]:
         """
-        Get wallet metrics including balance, value, and performance.
+        Get the training status of the agent.
+        
+        Returns:
+            Dictionary with training information
+        """
+        return {
+            "agent_id": self.id,
+            "agent_name": self.name,
+            "agent_type": self.agent_type,
+            "last_training": self.last_training,
+            "training_iterations": self.training_iterations,
+            "time_since_last_training": time.time() - self.last_training if self.last_training > 0 else None
+        }
+    
+    def update_performance_metrics(self, metrics: Dict[str, Any]) -> None:
+        """
+        Update the agent's performance metrics.
         
         Args:
-            current_prices (Dict[str, float]): Current prices of assets
+            metrics: Dictionary with performance metrics to update
+        """
+        self.performance_metrics.update(metrics)
+    
+    @abstractmethod
+    def run(self, data: Any) -> Any:
+        """
+        Execute the agent's logic based on provided data.
+        Must be implemented by all concrete agent classes.
+        
+        Args:
+            data: Input data for the agent to process
             
         Returns:
-            Dict: Wallet metrics
+            Agent's output after processing the data
         """
-        return self.wallet.get_metrics(current_prices) 
+        pass
+    
+    @abstractmethod
+    def train(self, training_data: Any) -> Tuple[bool, Dict[str, Any]]:
+        """
+        Train the agent using the provided data.
+        Must be implemented by all concrete agent classes.
+        
+        Args:
+            training_data: Data to use for training
+            
+        Returns:
+            Tuple of (success, training_metrics)
+        """
+        pass 
