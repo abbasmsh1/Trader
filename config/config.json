@@ -1,189 +1,244 @@
 {
-    "mode": "run",
-    "use_testnet": true,
-    "base_currency": "USDT",
-    "initial_balance": 20.0,
-    "update_interval": 60,
-    "log_level": "INFO",
-    "exchanges": {
-        "binance": {
-            "api_key": "",
-            "api_secret": "",
-            "testnet": true
-        }
+  "app_name": "Crypto Trader",
+  "version": "0.1.0",
+  "testnet": true,
+  "demo_mode": true,
+  "update_interval": 60,
+  "initial_balance": 20.0,
+  "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
+  "min_trade_value": 5.0,
+  "database": {
+    "type": "pickle",
+    "path": "models"
+  },
+  "agents": {
+    "system_controller": {
+      "name": "System Controller",
+      "enabled": true
     },
-    "symbols": [
-        "BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "ADA/USDT",
-        "DOT/USDT", "AVAX/USDT", "LINK/USDT", "MATIC/USDT", "DOGE/USDT",
-        "UNI/USDT", "AAVE/USDT", "LTC/USDT", "ATOM/USDT", "FTM/USDT"
+    "market_analyzer": [
+      {
+        "name": "BTC Market Analyzer",
+        "enabled": true,
+        "symbols": ["BTC/USDT"],
+        "indicators": ["rsi", "macd", "bollinger"]
+      },
+      {
+        "name": "ETH Market Analyzer",
+        "enabled": true,
+        "symbols": ["ETH/USDT"],
+        "indicators": ["rsi", "macd", "bollinger"]
+      },
+      {
+        "name": "SOL Market Analyzer",
+        "enabled": true,
+        "symbols": ["SOL/USDT"],
+        "indicators": ["rsi", "macd", "bollinger"]
+      }
     ],
-    "agents": {
-        "system_controller": {
-            "name": "SystemController",
-            "enabled": true
+    "strategy_agents": [
+      {
+        "name": "Trend Following Strategy",
+        "type": "trend_strategy",
+        "enabled": true,
+        "config": {
+          "trend_threshold": 0.05,
+          "entry_signal_threshold": 0.6,
+          "exit_signal_threshold": 0.4,
+          "max_positions": 3
         },
-        "portfolio_manager": {
-            "name": "PortfolioManager",
-            "enabled": true,
-            "risk_per_trade": 0.02,
-            "max_open_trades": 5,
-            "allocation_strategy": "equal_weight"
+        "dependencies": ["market_analyzer"]
+      },
+      {
+        "name": "Swing Trading Strategy",
+        "type": "swing_strategy",
+        "enabled": true,
+        "config": {
+          "swing_threshold": 0.03,
+          "max_swing_duration": 14,
+          "entry_signal_threshold": 0.7,
+          "exit_signal_threshold": 0.3
         },
-        "trader_agents": [
-            {
-                "name": "BuffettTrader",
-                "description": "Value-oriented, long-term investor with a risk-averse approach",
-                "enabled": true,
-                "symbols": ["BTC/USDT", "ETH/USDT", "LTC/USDT"],
-                "timeframe": "1d",
-                "risk_tolerance": "low",
-                "trading_style": "value",
-                "holding_period": "long",
-                "personality_traits": {
-                    "patience": 0.9,
-                    "conservatism": 0.8,
-                    "discipline": 0.9,
-                    "research_focus": 0.9,
-                    "value_bias": 0.9
-                },
-                "model_params": {
-                    "dqn_layers": [128, 64, 32],
-                    "learning_rate": 0.0001,
-                    "discount_factor": 0.95,
-                    "exploration_rate": 0.1
-                }
-            },
-            {
-                "name": "DaioTrader",
-                "description": "Macro-focused, trend follower with strong discipline",
-                "enabled": true,
-                "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "DOT/USDT"],
-                "timeframe": "4h",
-                "risk_tolerance": "medium",
-                "trading_style": "trend",
-                "holding_period": "medium",
-                "personality_traits": {
-                    "patience": 0.7,
-                    "conservatism": 0.6,
-                    "discipline": 0.9,
-                    "macro_focus": 0.9,
-                    "trend_bias": 0.8
-                },
-                "model_params": {
-                    "dqn_layers": [256, 128, 64],
-                    "learning_rate": 0.0005,
-                    "discount_factor": 0.9,
-                    "exploration_rate": 0.15
-                }
-            },
-            {
-                "name": "SorosTrader",
-                "description": "Contrarian with a focus on market reflexivity",
-                "enabled": true,
-                "symbols": ["BTC/USDT", "ETH/USDT", "XRP/USDT", "ADA/USDT", "LINK/USDT"],
-                "timeframe": "1h",
-                "risk_tolerance": "high",
-                "trading_style": "contrarian",
-                "holding_period": "medium",
-                "personality_traits": {
-                    "patience": 0.5,
-                    "conservatism": 0.3,
-                    "creativity": 0.8,
-                    "reflexivity_focus": 0.9,
-                    "contrarian_bias": 0.9
-                },
-                "model_params": {
-                    "dqn_layers": [256, 128, 64],
-                    "learning_rate": 0.001,
-                    "discount_factor": 0.85,
-                    "exploration_rate": 0.2
-                }
-            },
-            {
-                "name": "LynchTrader",
-                "description": "Growth-focused with strong fundamental analysis",
-                "enabled": true,
-                "symbols": ["SOL/USDT", "AVAX/USDT", "MATIC/USDT", "DOT/USDT", "ATOM/USDT"],
-                "timeframe": "1d",
-                "risk_tolerance": "medium",
-                "trading_style": "growth",
-                "holding_period": "long",
-                "personality_traits": {
-                    "patience": 0.7,
-                    "fundamental_focus": 0.9,
-                    "growth_bias": 0.9,
-                    "diversification": 0.7,
-                    "adaptability": 0.8
-                },
-                "model_params": {
-                    "dqn_layers": [128, 64, 32],
-                    "learning_rate": 0.0003,
-                    "discount_factor": 0.92,
-                    "exploration_rate": 0.12
-                }
-            },
-            {
-                "name": "SimonsTrader",
-                "description": "Quantitative, high-frequency trader with statistical models",
-                "enabled": true,
-                "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "XRP/USDT", "DOGE/USDT", "FTM/USDT"],
-                "timeframe": "15m",
-                "risk_tolerance": "high",
-                "trading_style": "quant",
-                "holding_period": "short",
-                "personality_traits": {
-                    "patience": 0.3,
-                    "data_driven": 0.9,
-                    "precision": 0.9,
-                    "adaptability": 0.7,
-                    "speed_focus": 0.9
-                },
-                "model_params": {
-                    "dqn_layers": [512, 256, 128],
-                    "learning_rate": 0.001,
-                    "discount_factor": 0.8,
-                    "exploration_rate": 0.25
-                }
-            }
-        ],
-        "execution_agent": {
-            "name": "ExecutionAgent",
-            "enabled": true,
-            "max_slippage": 0.01
+        "dependencies": ["market_analyzer"]
+      },
+      {
+        "name": "Breakout Strategy",
+        "type": "breakout_strategy",
+        "enabled": true,
+        "config": {
+          "breakout_threshold": 0.1,
+          "confirmation_period": 3,
+          "false_breakout_filter": true
         },
-        "data_agent": {
-            "name": "DataCollectionAgent",
-            "enabled": true,
-            "timeframes": ["1m", "5m", "15m", "1h", "4h", "1d"]
+        "dependencies": ["market_analyzer"]
+      }
+    ],
+    "portfolio_manager": {
+      "name": "Portfolio Manager",
+      "enabled": true,
+      "config": {
+        "max_allocation_per_position": 0.25,
+        "min_cash_reserve": 0.1,
+        "rebalance_threshold": 0.1,
+        "risk_factor": 0.5
+      },
+      "dependencies": ["strategy_agents"]
+    },
+    "execution_agent": {
+      "name": "Execution Agent",
+      "enabled": true,
+      "config": {
+        "slippage_model": "percentage",
+        "slippage_factor": 0.002,
+        "max_retries": 3
+      }
+    },
+    "risk_manager": {
+      "name": "Risk Manager",
+      "enabled": true,
+      "config": {
+        "max_drawdown": 0.15,
+        "position_size_limit": 0.2,
+        "stop_loss_percentage": 0.05,
+        "trailing_stop": true
+      },
+      "dependencies": ["portfolio_manager"]
+    },
+    "trader_agents": [
+      {
+        "name": "Buffett Trader",
+        "type": "buffett_trader",
+        "enabled": true,
+        "description": "Value investor focused on fundamentals",
+        "trading_style": "value",
+        "config": {
+          "min_holding_period": 30,
+          "margin_of_safety": 0.3,
+          "max_position_size": 0.25,
+          "fundamental_weight": 0.8,
+          "technical_weight": 0.2
         }
-    },
-    "backtesting": {
-        "start_date": "2023-01-01",
-        "end_date": "2023-12-31",
-        "data_source": "csv",
-        "data_directory": "data/historical"
-    },
-    "optimization": {
-        "method": "grid",
-        "metric": "sharpe_ratio",
-        "max_runs": 100
-    },
-    "agent_communication": {
+      },
+      {
+        "name": "Soros Trader",
+        "type": "soros_trader",
         "enabled": true,
-        "communication_interval": 10,
-        "messaging_channels": ["market_analysis", "trade_ideas", "risk_warnings"]
-    },
-    "reinforcement_learning": {
+        "description": "Macro investor focused on reflexivity",
+        "trading_style": "macro",
+        "config": {
+          "reflexivity_threshold": 0.15,
+          "cycle_periods": [7, 14, 30],
+          "sentiment_weight": 0.4,
+          "leverage_multiplier": 1.5,
+          "regime_threshold": 0.2
+        }
+      },
+      {
+        "name": "Simons Trader",
+        "type": "simons_trader",
         "enabled": true,
-        "framework": "tensorflow",
-        "training_interval": 300,
-        "batch_size": 64,
-        "memory_size": 10000,
-        "save_models_interval": 3600
+        "description": "Quantitative trader using statistical models",
+        "trading_style": "quant",
+        "config": {
+          "mean_reversion_periods": [3, 5, 10],
+          "zscore_threshold": 2.0,
+          "correlation_threshold": 0.7,
+          "volatility_scaling": true,
+          "max_position_duration": 5,
+          "statistical_confidence": 0.95
+        }
+      },
+      {
+        "name": "Lynch Trader",
+        "type": "lynch_trader",
+        "enabled": true,
+        "description": "Growth investor looking for tenbaggers",
+        "trading_style": "growth",
+        "config": {
+          "growth_periods": [7, 14, 30],
+          "growth_threshold": 0.1,
+          "pattern_confidence": 0.8,
+          "momentum_weight": 0.6,
+          "max_holding_period": 60,
+          "ten_bagger_threshold": 0.15
+        }
+      }
+    ],
+    "historical_analyzer": {
+      "enabled": true,
+      "name": "HistoricalAnalyzer",
+      "description": "Analyzes historical market data and provides insights",
+      "timeframes": ["1h", "4h", "1d"],
+      "lookback_periods": {
+        "1h": 30,
+        "4h": 30,
+        "1d": 30
+      },
+      "symbols": ["BTC/USDT", "ETH/USDT", "BNB/USDT", "ADA/USDT", "DOGE/USDT"],
+      "analysis_interval": 3600
     },
-    "system": {
-        "save_interval": 300,
-        "db_path": "data/trader.db",
-        "cache_dir": "data/cache"
+    "market_data_service": {
+      "enabled": true,
+      "api_key": "YOUR_API_KEY",
+      "secret": "YOUR_API_SECRET"
+    },
+    "execution_agent": {
+      "enabled": true,
+      "name": "ExecutionAgent",
+      "description": "Executes trades in the market",
+      "max_retries": 3,
+      "retry_delay": 5,
+      "slippage_model": "linear",
+      "min_order_size": 10.0
+    },
+    "trader_agents": [
+      {
+        "enabled": true,
+        "type": "value_trader",
+        "name": "ValueTrader",
+        "description": "Value investing focused trader",
+        "symbols": ["BTC/USDT", "ETH/USDT", "BNB/USDT"],
+        "position_size": 0.1,
+        "max_positions": 3,
+        "stop_loss": 0.05,
+        "take_profit": 0.15
+      },
+      {
+        "enabled": true,
+        "type": "momentum_trader",
+        "name": "MomentumTrader",
+        "description": "Momentum and trend following trader",
+        "symbols": ["BTC/USDT", "ETH/USDT", "ADA/USDT", "DOGE/USDT"],
+        "position_size": 0.15,
+        "max_positions": 4,
+        "stop_loss": 0.03,
+        "take_profit": 0.1
+      },
+      {
+        "enabled": true,
+        "type": "contrarian_trader",
+        "name": "ContrarianTrader",
+        "description": "Contrarian trading strategy",
+        "symbols": ["BTC/USDT", "ETH/USDT", "BNB/USDT"],
+        "position_size": 0.1,
+        "max_positions": 3,
+        "stop_loss": 0.07,
+        "take_profit": 0.2
+      }
+    ],
+    "optimizer": {
+      "enabled": true,
+      "name": "OptimizerAgent",
+      "description": "Optimizes trading strategy parameters",
+      "optimization_method": "genetic",
+      "population_size": 50,
+      "generations": 20,
+      "mutation_rate": 0.2,
+      "crossover_rate": 0.7,
+      "grid_search_steps": 5,
+      "metrics": ["sharpe_ratio", "max_drawdown", "profit_factor", "win_rate"],
+      "api_key": "YOUR_API_KEY",
+      "secret": "YOUR_API_SECRET"
     }
+  }
 } 

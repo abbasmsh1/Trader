@@ -1,503 +1,194 @@
-// Crypto Trader Settings JavaScript
+// Settings JavaScript
 
-// Socket.io connection
-const socket = io();
-
-// Settings cache
-let currentSettings = {};
-let hasUnsavedChanges = false;
-
-// Document ready function
-document.addEventListener('DOMContentLoaded', function() {
+// Document ready handler
+$(document).ready(function() {
+    // Initialize settings components
+    initSettings();
+    
     // Set up event listeners
     setupEventListeners();
-    
-    // Load settings from server
-    loadSettings();
-    
-    // Connect system status indicators
-    connectSystemControls();
 });
 
-// Set up event listeners for the page
+// Initialize settings components
+function initSettings() {
+    // Load saved settings (would fetch from server in production)
+    loadSavedSettings();
+}
+
+// Set up event listeners
 function setupEventListeners() {
-    // Save settings button (header)
-    const saveAllSettingsBtn = document.getElementById('save-all-settings');
-    if (saveAllSettingsBtn) {
-        saveAllSettingsBtn.addEventListener('click', saveAllSettings);
+    // General settings form
+    $('#general-settings-form').on('submit', function(e) {
+        e.preventDefault();
+        saveGeneralSettings();
+    });
+    
+    // Trader settings forms
+    $('#aggressive-trader-form').on('submit', function(e) {
+        e.preventDefault();
+        saveTraderSettings('aggressive');
+    });
+    
+    $('#conservative-trader-form').on('submit', function(e) {
+        e.preventDefault();
+        saveTraderSettings('conservative');
+    });
+    
+    // Add event listeners for other traders as needed
+    
+    // Notifications settings form
+    $('#notifications-settings-form').on('submit', function(e) {
+        e.preventDefault();
+        saveNotificationSettings();
+    });
+    
+    // API settings form
+    $('#api-settings-form').on('submit', function(e) {
+        e.preventDefault();
+        saveAPISettings();
+    });
+    
+    // Dark mode toggle
+    $('#dark-mode').on('change', function() {
+        toggleDarkMode($(this).is(':checked'));
+    });
+}
+
+// Load saved settings
+function loadSavedSettings() {
+    // In production, this would load from server/local storage
+    // For now, we'll use defaults set in the HTML
+    
+    // Apply dark mode if enabled
+    if ($('#dark-mode').is(':checked')) {
+        toggleDarkMode(true);
     }
-    
-    // Save settings button (footer)
-    const footerSaveBtn = document.getElementById('footer-save-settings');
-    if (footerSaveBtn) {
-        footerSaveBtn.addEventListener('click', saveAllSettings);
-    }
-    
-    // Reset to defaults button
-    const resetBtn = document.querySelector('button.btn-secondary:not([id])');
-    if (resetBtn) {
-        resetBtn.addEventListener('click', confirmResetSettings);
-    }
-    
-    // Listen for form changes
-    setupFormChangeListeners();
-    
-    // Socket.io event listeners
-    socket.on('system_status', function(data) {
-        updateSystemStatus(data);
-    });
-    
-    // Before unload warning if unsaved changes
-    window.addEventListener('beforeunload', function(e) {
-        if (hasUnsavedChanges) {
-            e.preventDefault();
-            e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-            return e.returnValue;
-        }
-    });
 }
 
-// Set up form change listeners for all settings forms
-function setupFormChangeListeners() {
-    // Find all form inputs
-    const allInputs = document.querySelectorAll('input, select, textarea');
-    
-    allInputs.forEach(input => {
-        const eventType = input.type === 'checkbox' || input.type === 'radio' || input.tagName === 'SELECT' 
-            ? 'change' 
-            : 'input';
-        
-        input.addEventListener(eventType, function() {
-            hasUnsavedChanges = true;
-            updateSaveButtonState();
-        });
-    });
-}
-
-// Update save button state based on changes
-function updateSaveButtonState() {
-    const saveButtons = document.querySelectorAll('#save-all-settings, #footer-save-settings');
-    
-    saveButtons.forEach(button => {
-        if (hasUnsavedChanges) {
-            button.classList.remove('btn-primary');
-            button.classList.add('btn-warning');
-            button.innerHTML = '<i class="bi bi-save"></i> Save Changes*';
-        } else {
-            button.classList.remove('btn-warning');
-            button.classList.add('btn-primary');
-            button.innerHTML = '<i class="bi bi-save"></i> Save All Changes';
-        }
-    });
-}
-
-// Load settings from server
-function loadSettings() {
-    // Show loading state
-    document.querySelectorAll('#save-all-settings, #footer-save-settings').forEach(button => {
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
-    });
-    
-    // Since we're in demo mode, we'll simulate loading settings
-    // In a real app, you would fetch from a server endpoint
-    setTimeout(() => {
-        // Simulate settings from server
-        currentSettings = {
-            general: {
-                systemName: 'Crypto Trader',
-                baseCurrency: 'USDT',
-                initialBalance: 10000,
-                updateInterval: 5,
-                loggingEnabled: true,
-                autoStart: true
-            },
-            ui: {
-                theme: 'light',
-                chartStyle: 'line',
-                realTimeUpdates: true
-            },
-            trading: {
-                tradingMode: 'paper',
-                strategy: 'trend_following',
-                tradableAssets: ['BTC', 'ETH', 'SOL', 'BNB'],
-                timeframe: '15m',
-                autoRebalance: true
-            },
-            risk: {
-                maxPositionSize: 20,
-                stopLoss: 5,
-                takeProfit: 15,
-                maxDrawdown: 25,
-                trailingStops: true,
-                autoAdjustRisk: true
-            },
-            exchanges: {
-                binance: {
-                    connected: true,
-                    apiKey: '••••••••••••••••••••••',
-                    apiSecret: '••••••••••••••••••••••',
-                    enableTrading: true
-                },
-                coinbase: {
-                    connected: false,
-                    apiKey: '',
-                    apiSecret: '',
-                    passphrase: '',
-                    enableTrading: false
-                }
-            },
-            notifications: {
-                email: '',
-                notifyTrades: true,
-                notifyProfit: true,
-                notifyErrors: true,
-                notifyOpportunities: false,
-                telegramChatId: '',
-                pushNotifications: false
-            }
-        };
-        
-        // Populate form fields with settings
-        populateSettingsForms(currentSettings);
-        
-        // Restore save buttons
-        document.querySelectorAll('#save-all-settings, #footer-save-settings').forEach(button => {
-            button.disabled = false;
-            button.innerHTML = '<i class="bi bi-save"></i> Save All Changes';
-        });
-        
-        // Reset unsaved changes flag
-        hasUnsavedChanges = false;
-    }, 800);
-    
-    // Get system status
-    fetch('/api/system/status')
-        .then(response => response.json())
-        .then(data => {
-            updateSystemStatus(data);
-        })
-        .catch(error => console.error('Error fetching system status:', error));
-}
-
-// Populate form fields with settings
-function populateSettingsForms(settings) {
-    // General settings
-    document.getElementById('system-name').value = settings.general.systemName;
-    document.getElementById('base-currency').value = settings.general.baseCurrency;
-    document.getElementById('initial-balance').value = settings.general.initialBalance;
-    document.getElementById('update-interval').value = settings.general.updateInterval;
-    document.getElementById('logging-enabled').checked = settings.general.loggingEnabled;
-    document.getElementById('auto-start').checked = settings.general.autoStart;
-    
-    // UI settings
-    document.getElementById('theme').value = settings.ui.theme;
-    document.getElementById('chart-style').value = settings.ui.chartStyle;
-    document.getElementById('real-time-updates').checked = settings.ui.realTimeUpdates;
-    
-    // Trading settings
-    document.getElementById('trading-mode').value = settings.trading.tradingMode;
-    document.getElementById('strategy').value = settings.trading.strategy;
-    document.getElementById('asset-btc').checked = settings.trading.tradableAssets.includes('BTC');
-    document.getElementById('asset-eth').checked = settings.trading.tradableAssets.includes('ETH');
-    document.getElementById('asset-sol').checked = settings.trading.tradableAssets.includes('SOL');
-    document.getElementById('asset-bnb').checked = settings.trading.tradableAssets.includes('BNB');
-    document.getElementById('timeframe').value = settings.trading.timeframe;
-    document.getElementById('auto-rebalance').checked = settings.trading.autoRebalance;
-    
-    // Risk settings
-    document.getElementById('max-position-size').value = settings.risk.maxPositionSize;
-    document.getElementById('stop-loss').value = settings.risk.stopLoss;
-    document.getElementById('take-profit').value = settings.risk.takeProfit;
-    document.getElementById('max-drawdown').value = settings.risk.maxDrawdown;
-    document.getElementById('trailing-stops').checked = settings.risk.trailingStops;
-    document.getElementById('auto-adjust-risk').checked = settings.risk.autoAdjustRisk;
-    
-    // Exchange settings
-    document.getElementById('binance-api-key').value = settings.exchanges.binance.apiKey;
-    document.getElementById('binance-api-secret').value = settings.exchanges.binance.apiSecret;
-    document.getElementById('binance-enable-trading').checked = settings.exchanges.binance.enableTrading;
-    
-    document.getElementById('coinbase-api-key').value = settings.exchanges.coinbase.apiKey;
-    document.getElementById('coinbase-api-secret').value = settings.exchanges.coinbase.apiSecret;
-    if (document.getElementById('coinbase-passphrase')) {
-        document.getElementById('coinbase-passphrase').value = settings.exchanges.coinbase.passphrase;
-    }
-    document.getElementById('coinbase-enable-trading').checked = settings.exchanges.coinbase.enableTrading;
-    
-    // Notification settings
-    document.getElementById('notification-email').value = settings.notifications.email;
-    document.getElementById('notify-trades').checked = settings.notifications.notifyTrades;
-    document.getElementById('notify-profit').checked = settings.notifications.notifyProfit;
-    document.getElementById('notify-errors').checked = settings.notifications.notifyErrors;
-    document.getElementById('notify-opportunities').checked = settings.notifications.notifyOpportunities;
-    document.getElementById('telegram-chat-id').value = settings.notifications.telegramChatId;
-    document.getElementById('push-notifications').checked = settings.notifications.pushNotifications;
-}
-
-// Get current settings from form values
-function getFormSettings() {
+// Save general settings
+function saveGeneralSettings() {
     const settings = {
-        general: {
-            systemName: document.getElementById('system-name').value,
-            baseCurrency: document.getElementById('base-currency').value,
-            initialBalance: parseFloat(document.getElementById('initial-balance').value),
-            updateInterval: parseInt(document.getElementById('update-interval').value),
-            loggingEnabled: document.getElementById('logging-enabled').checked,
-            autoStart: document.getElementById('auto-start').checked
-        },
-        ui: {
-            theme: document.getElementById('theme').value,
-            chartStyle: document.getElementById('chart-style').value,
-            realTimeUpdates: document.getElementById('real-time-updates').checked
-        },
-        trading: {
-            tradingMode: document.getElementById('trading-mode').value,
-            strategy: document.getElementById('strategy').value,
-            tradableAssets: [],
-            timeframe: document.getElementById('timeframe').value,
-            autoRebalance: document.getElementById('auto-rebalance').checked
-        },
-        risk: {
-            maxPositionSize: parseFloat(document.getElementById('max-position-size').value),
-            stopLoss: parseFloat(document.getElementById('stop-loss').value),
-            takeProfit: parseFloat(document.getElementById('take-profit').value),
-            maxDrawdown: parseFloat(document.getElementById('max-drawdown').value),
-            trailingStops: document.getElementById('trailing-stops').checked,
-            autoAdjustRisk: document.getElementById('auto-adjust-risk').checked
-        },
-        exchanges: {
-            binance: {
-                connected: true, // This would be determined by the server
-                apiKey: document.getElementById('binance-api-key').value,
-                apiSecret: document.getElementById('binance-api-secret').value,
-                enableTrading: document.getElementById('binance-enable-trading').checked
-            },
-            coinbase: {
-                connected: false, // This would be determined by the server
-                apiKey: document.getElementById('coinbase-api-key').value,
-                apiSecret: document.getElementById('coinbase-api-secret').value,
-                passphrase: document.getElementById('coinbase-passphrase') ? document.getElementById('coinbase-passphrase').value : '',
-                enableTrading: document.getElementById('coinbase-enable-trading').checked
-            }
-        },
-        notifications: {
-            email: document.getElementById('notification-email').value,
-            notifyTrades: document.getElementById('notify-trades').checked,
-            notifyProfit: document.getElementById('notify-profit').checked,
-            notifyErrors: document.getElementById('notify-errors').checked,
-            notifyOpportunities: document.getElementById('notify-opportunities').checked,
-            telegramChatId: document.getElementById('telegram-chat-id').value,
-            pushNotifications: document.getElementById('push-notifications').checked
+        baseCurrency: $('#base-currency').val(),
+        defaultAmount: $('#default-amount').val(),
+        refreshInterval: $('#refresh-interval').val(),
+        darkMode: $('#dark-mode').is(':checked')
+    };
+    
+    // In production, this would save to server/local storage
+    console.log('Saving general settings:', settings);
+    
+    // Simulate API call
+    simulateAPICall('General settings saved successfully!');
+}
+
+// Save trader settings
+function saveTraderSettings(traderType) {
+    const settings = {
+        enabled: $(`#${traderType}-enabled`).is(':checked'),
+        riskLevel: $(`#${traderType}-risk`).val(),
+        allocation: $(`#${traderType}-allocation`).val(),
+        confidence: $(`#${traderType}-confidence`).val(),
+        timeout: $(`#${traderType}-timeout`).val(),
+        symbols: Array.from($(`#${traderType}-symbols option:selected`)).map(option => option.value)
+    };
+    
+    // In production, this would save to server/local storage
+    console.log(`Saving ${traderType} trader settings:`, settings);
+    
+    // Simulate API call
+    simulateAPICall(`${traderType.charAt(0).toUpperCase() + traderType.slice(1)} trader settings saved successfully!`);
+}
+
+// Save notification settings
+function saveNotificationSettings() {
+    const settings = {
+        emailNotifications: $('#email-notifications').is(':checked'),
+        emailAddress: $('#email-address').val(),
+        pushNotifications: $('#push-notifications').is(':checked'),
+        triggers: {
+            tradeExecuted: $('#trade-executed').is(':checked'),
+            priceAlert: $('#price-alert').is(':checked'),
+            portfolioChange: $('#portfolio-change').is(':checked'),
+            traderError: $('#trader-error').is(':checked')
         }
     };
     
-    // Get tradable assets
-    if (document.getElementById('asset-btc').checked) settings.trading.tradableAssets.push('BTC');
-    if (document.getElementById('asset-eth').checked) settings.trading.tradableAssets.push('ETH');
-    if (document.getElementById('asset-sol').checked) settings.trading.tradableAssets.push('SOL');
-    if (document.getElementById('asset-bnb').checked) settings.trading.tradableAssets.push('BNB');
+    // In production, this would save to server/local storage
+    console.log('Saving notification settings:', settings);
     
-    return settings;
+    // Simulate API call
+    simulateAPICall('Notification settings saved successfully!');
 }
 
-// Save all settings
-function saveAllSettings() {
-    // Get settings from forms
-    const newSettings = getFormSettings();
+// Save API settings
+function saveAPISettings() {
+    const settings = {
+        exchange: $('#exchange-select').val(),
+        apiKey: $('#api-key').val(),
+        apiSecret: $('#api-secret').val(),
+        enableTrading: $('#enable-trading').is(':checked')
+    };
     
-    // Show loading state
-    document.querySelectorAll('#save-all-settings, #footer-save-settings').forEach(button => {
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...';
-    });
+    // In production, this would save to server/local storage
+    console.log('Saving API settings:', settings);
     
-    // In a real app, you would send to a server endpoint
-    // For demo, simulate saving with a timeout
+    // Simulate API call
+    simulateAPICall('API settings saved successfully!');
+}
+
+// Toggle dark mode
+function toggleDarkMode(enabled) {
+    if (enabled) {
+        $('body').addClass('dark-mode');
+    } else {
+        $('body').removeClass('dark-mode');
+    }
+    
+    // In production, this would save to server/local storage
+    console.log('Dark mode:', enabled);
+}
+
+// Simulate API call with delay
+function simulateAPICall(successMessage) {
+    // Show loading indicator
+    const submitBtn = $(document.activeElement);
+    const originalText = submitBtn.text();
+    submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Saving...');
+    
+    // Simulate delay
     setTimeout(() => {
-        // Update settings cache
-        currentSettings = newSettings;
-        
         // Show success message
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-success alert-dismissible fade show fixed-top w-50 mx-auto mt-3';
-        alertDiv.setAttribute('role', 'alert');
-        alertDiv.innerHTML = `
-            <strong>Success!</strong> Your settings have been saved.
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        document.body.appendChild(alertDiv);
+        showSuccessMessage(successMessage);
         
-        // Remove alert after 3 seconds
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 3000);
-        
-        // Restore save buttons
-        document.querySelectorAll('#save-all-settings, #footer-save-settings').forEach(button => {
-            button.disabled = false;
-            button.innerHTML = '<i class="bi bi-save"></i> Save All Changes';
-        });
-        
-        // Reset unsaved changes flag
-        hasUnsavedChanges = false;
-        updateSaveButtonState();
+        // Reset button
+        submitBtn.prop('disabled', false).text(originalText);
     }, 1000);
 }
 
-// Confirm reset to defaults
-function confirmResetSettings() {
-    if (confirm('Are you sure you want to reset all settings to default values? This cannot be undone.')) {
-        resetSettingsToDefaults();
-    }
-}
-
-// Reset settings to defaults
-function resetSettingsToDefaults() {
-    // In a real app, you would fetch default settings from server
-    // For demo, we'll use hardcoded defaults
-    const defaultSettings = {
-        general: {
-            systemName: 'Crypto Trader',
-            baseCurrency: 'USDT',
-            initialBalance: 10000,
-            updateInterval: 5,
-            loggingEnabled: true,
-            autoStart: false
-        },
-        ui: {
-            theme: 'light',
-            chartStyle: 'line',
-            realTimeUpdates: true
-        },
-        trading: {
-            tradingMode: 'paper',
-            strategy: 'trend_following',
-            tradableAssets: ['BTC', 'ETH'],
-            timeframe: '15m',
-            autoRebalance: false
-        },
-        risk: {
-            maxPositionSize: 10,
-            stopLoss: 5,
-            takeProfit: 15,
-            maxDrawdown: 25,
-            trailingStops: true,
-            autoAdjustRisk: false
-        },
-        exchanges: {
-            binance: {
-                connected: false,
-                apiKey: '',
-                apiSecret: '',
-                enableTrading: false
-            },
-            coinbase: {
-                connected: false,
-                apiKey: '',
-                apiSecret: '',
-                passphrase: '',
-                enableTrading: false
-            }
-        },
-        notifications: {
-            email: '',
-            notifyTrades: true,
-            notifyProfit: true,
-            notifyErrors: true,
-            notifyOpportunities: false,
-            telegramChatId: '',
-            pushNotifications: false
-        }
-    };
+// Show success message
+function showSuccessMessage(message) {
+    const alertDiv = $('<div class="alert alert-success alert-dismissible fade show" role="alert">')
+        .text(message)
+        .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
     
-    // Populate form fields with default settings
-    populateSettingsForms(defaultSettings);
+    $('#alert-container').append(alertDiv);
     
-    // Mark as having unsaved changes
-    hasUnsavedChanges = true;
-    updateSaveButtonState();
-    
-    // Show message
-    const alertDiv = document.createElement('div');
-    alertDiv.className = 'alert alert-info alert-dismissible fade show fixed-top w-50 mx-auto mt-3';
-    alertDiv.setAttribute('role', 'alert');
-    alertDiv.innerHTML = `
-        <strong>Settings Reset!</strong> All settings have been reset to defaults. Click Save to apply these changes.
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    document.body.appendChild(alertDiv);
-    
-    // Remove alert after 5 seconds
+    // Auto dismiss after 3 seconds
     setTimeout(() => {
-        alertDiv.remove();
+        alertDiv.alert('close');
+    }, 3000);
+}
+
+// Show error message
+function showErrorMessage(message) {
+    const alertDiv = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+        .text(message)
+        .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+    
+    $('#alert-container').append(alertDiv);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.alert('close');
     }, 5000);
-}
-
-// Update system status in the UI
-function updateSystemStatus(data) {
-    const statusIndicator = document.getElementById('status-indicator');
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (statusIndicator && startButton && stopButton) {
-        const isRunning = data.status === 'running';
-        
-        // Update status indicator
-        statusIndicator.textContent = isRunning ? 'Running' : 'Stopped';
-        statusIndicator.classList.remove('bg-success', 'bg-danger');
-        statusIndicator.classList.add(isRunning ? 'bg-success' : 'bg-danger');
-        
-        // Update buttons
-        startButton.disabled = isRunning;
-        stopButton.disabled = !isRunning;
-    }
-}
-
-// Connect system control buttons
-function connectSystemControls() {
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (startButton) {
-        startButton.addEventListener('click', startTradingSystem);
-    }
-    
-    if (stopButton) {
-        stopButton.addEventListener('click', stopTradingSystem);
-    }
-}
-
-// Start the trading system
-function startTradingSystem() {
-    fetch('/api/system/start', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'started') {
-            updateSystemStatus({ status: 'running' });
-        }
-    })
-    .catch(error => console.error('Error starting system:', error));
-}
-
-// Stop the trading system
-function stopTradingSystem() {
-    fetch('/api/system/stop', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'stopped') {
-            updateSystemStatus({ status: 'stopped' });
-        }
-    })
-    .catch(error => console.error('Error stopping system:', error));
 } 

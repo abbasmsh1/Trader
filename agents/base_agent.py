@@ -1,259 +1,323 @@
 """
-Base Agent Module - Foundation for all trading agents in the system.
-
-This module provides the abstract base class that all agents must inherit from,
-ensuring a consistent interface across different agent types.
+Base Agent - Foundation class for all agents in the trading system.
 """
-from abc import ABC, abstractmethod
-import logging
-from typing import Dict, Any, Optional, List, Tuple
-import uuid
-import time
-import json
 
-class BaseAgent(ABC):
+import uuid
+import logging
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+
+from utils.shared_memory import SharedMemory
+
+class BaseAgent:
     """
-    Abstract base class for all trading agents in the system.
+    Base class for all agents in the trading system.
     
-    Defines the common interface and functionality that all agents must implement.
-    Handles agent identification, state management, and logging.
+    Provides common functionality such as:
+    - Unique identification
+    - Activation/deactivation
+    - State persistence
+    - Messaging/communication
+    - Planning and execution
     """
     
     def __init__(self, 
                  name: str, 
-                 description: str,
-                 agent_type: str,
-                 config: Dict[str, Any],
-                 parent_id: Optional[str] = None):
+                 description: str, 
+                 config: Dict[str, Any], 
+                 parent_id: Optional[str] = None,
+                 agent_type: str = "base"):
         """
         Initialize the base agent.
         
         Args:
-            name: Human-readable name of the agent
-            description: Short description of the agent's purpose
-            agent_type: Type classification of the agent
-            config: Configuration parameters for the agent
-            parent_id: ID of the parent agent if part of a hierarchy
+            name: Human-readable name for the agent
+            description: Description of the agent's purpose
+            config: Configuration dictionary for the agent
+            parent_id: Optional ID of parent agent
+            agent_type: Type identifier for the agent
         """
         self.id = str(uuid.uuid4())
         self.name = name
         self.description = description
-        self.agent_type = agent_type
         self.config = config
         self.parent_id = parent_id
-        self.children: List[BaseAgent] = []
+        self.agent_type = agent_type
         
-        # Agent state
-        self.active = True
-        self.created_at = time.time()
-        self.last_run = 0
-        self.last_training = 0
-        self.training_iterations = 0
+        # Status tracking
+        self.active = False
+        self.initialized = False
+        self.last_update = None
+        self.creation_time = datetime.now()
+        self.error_count = 0
         
-        # Performance metrics
-        self.performance_metrics = {
-            "total_decisions": 0,
-            "successful_decisions": 0,
-            "total_trades": 0,
-            "profitable_trades": 0,
-            "total_profit": 0.0,
-            "max_drawdown": 0.0,
-            "sharpe_ratio": 0.0
+        # State tracking
+        self.state = {}
+        
+        # Planning and execution
+        self.current_plan = None
+        self.plan_step = 0
+        self.plan_complete = False
+        
+        # Set up logging
+        self.logger = logging.getLogger(f"agent.{agent_type}.{self.id}")
+        
+        # Initialize shared memory
+        self.shared_memory = SharedMemory()
+    
+    def plan(self, data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Create a plan based on the current state and input data.
+        To be overridden by subclasses for specific planning logic.
+        
+        Args:
+            data: Input data for planning
+            
+        Returns:
+            Dictionary containing the plan
+        """
+        # Base implementation - simple plan with one step
+        plan = {
+            "steps": [
+                {
+                    "action": "process",
+                    "data": data or {},
+                    "expected_result": "success"
+                }
+            ],
+            "current_step": 0,
+            "total_steps": 1,
+            "status": "created",
+            "created_at": datetime.now().isoformat()
         }
         
-        # Setup logging
-        self.logger = logging.getLogger(f"agent.{self.agent_type}.{self.id}")
-
-    def add_child(self, agent: 'BaseAgent') -> None:
-        """
-        Add a child agent to this agent.
+        # Store plan in shared memory
+        self.shared_memory.store_plan(self.id, plan)
         
-        Args:
-            agent: The child agent to add
-        """
-        agent.parent_id = self.id
-        self.children.append(agent)
-        self.logger.info(f"Added child agent {agent.name} ({agent.id})")
+        return plan
     
-    def remove_child(self, agent_id: str) -> bool:
+    def execute(self, plan: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Remove a child agent from this agent.
+        Execute a single step of the plan.
+        To be overridden by subclasses for specific execution logic.
         
         Args:
-            agent_id: ID of the child agent to remove
+            plan: Plan to execute (if None, use current plan)
             
         Returns:
-            True if agent was removed, False if not found
+            Dictionary containing execution results
         """
-        for i, agent in enumerate(self.children):
-            if agent.id == agent_id:
-                self.children.pop(i)
-                self.logger.info(f"Removed child agent {agent.name} ({agent.id})")
-                return True
-        return False
+        # Use provided plan or current plan
+        if plan is None:
+            plan = self.current_plan or self.shared_memory.get_plan(self.id)
+            if plan is None:
+                return {"success": False, "error": "No plan available"}
+        
+        # Get current step
+        current_step = plan.get("current_step", 0)
+        steps = plan.get("steps", [])
+        
+        # Check if plan is complete
+        if current_step >= len(steps):
+            return {"success": True, "result": "plan_complete"}
+        
+        # Get step to execute
+        step = steps[current_step]
+        
+        try:
+            # Execute step
+            result = self._execute_step(step)
+            
+            # Update plan
+            plan["current_step"] = current_step + 1
+            plan["status"] = "in_progress" if current_step + 1 < len(steps) else "complete"
+            
+            # Store updated plan
+            self.shared_memory.store_plan(self.id, plan)
+            
+            # Record action
+            self.shared_memory.record_action(self.id, {
+                "step": current_step,
+                "action": step.get("action", "unknown"),
+                "result": result
+            })
+            
+            return {
+                "success": True,
+                "step": current_step,
+                "result": result,
+                "plan_status": plan["status"]
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error executing plan step: {str(e)}")
+            return {
+                "success": False,
+                "step": current_step,
+                "error": str(e)
+            }
     
-    def get_child(self, agent_id: str) -> Optional['BaseAgent']:
+    def _execute_step(self, step: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Get a child agent by ID.
+        Execute a single step of the plan.
+        To be overridden by subclasses for specific step execution logic.
         
         Args:
-            agent_id: ID of the child agent
+            step: Step to execute
             
         Returns:
-            The child agent if found, None otherwise
+            Dictionary containing step execution results
         """
-        for agent in self.children:
-            if agent.id == agent_id:
-                return agent
-        return None
+        # Base implementation - just return the step data
+        return {"message": "Base agent does not implement step execution", "step": step}
     
-    def get_all_descendants(self) -> List['BaseAgent']:
+    def initialize(self) -> bool:
         """
-        Get all descendant agents recursively.
+        Initialize the agent. To be overridden by subclasses.
         
         Returns:
-            List of all descendant agents
+            Boolean indicating success
         """
-        descendants = []
-        for child in self.children:
-            descendants.append(child)
-            descendants.extend(child.get_all_descendants())
-        return descendants
+        self.initialized = True
+        return True
     
-    def activate(self) -> None:
-        """Activate this agent and log the event."""
+    def activate(self) -> bool:
+        """
+        Activate the agent.
+        
+        Returns:
+            Boolean indicating success
+        """
+        if not self.initialized:
+            success = self.initialize()
+            if not success:
+                self.logger.error(f"Failed to initialize {self.name} during activation")
+                return False
+        
         self.active = True
         self.logger.info(f"Agent {self.name} activated")
+        return True
     
-    def deactivate(self) -> None:
-        """Deactivate this agent and log the event."""
+    def deactivate(self) -> bool:
+        """
+        Deactivate the agent.
+        
+        Returns:
+            Boolean indicating success
+        """
         self.active = False
         self.logger.info(f"Agent {self.name} deactivated")
+        return True
     
-    def update_config(self, new_config: Dict[str, Any]) -> None:
+    def update(self, data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Update the agent's configuration.
+        Update the agent with new data and trigger processing.
         
         Args:
-            new_config: New configuration parameters to apply
+            data: Input data for the agent to process
+            
+        Returns:
+            Dictionary with results of the update
         """
-        self.config.update(new_config)
-        self.logger.info(f"Updated configuration for agent {self.name}")
+        if not self.active:
+            self.logger.warning(f"Attempted to update inactive agent {self.name}")
+            return {"success": False, "error": "Agent inactive"}
+        
+        try:
+            self.last_update = datetime.now()
+            
+            # Create plan
+            plan = self.plan(data)
+            
+            # Execute plan
+            result = self.execute(plan)
+            
+            return {"success": True, "result": result}
+            
+        except Exception as e:
+            self.error_count += 1
+            self.logger.error(f"Error updating agent: {str(e)}")
+            return {"success": False, "error": str(e)}
+    
+    def _process_update(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process an update. To be overridden by subclasses.
+        
+        Args:
+            data: Input data for processing
+            
+        Returns:
+            Results of processing
+        """
+        # Base implementation does nothing
+        return {"message": "Base agent does not implement processing"}
     
     def get_state(self) -> Dict[str, Any]:
         """
-        Get the current state of the agent.
+        Get the current state of the agent for persistence.
         
         Returns:
-            Dictionary containing the agent's state
+            Dictionary representing agent state
         """
         return {
             "id": self.id,
             "name": self.name,
             "description": self.description,
             "agent_type": self.agent_type,
-            "parent_id": self.parent_id,
             "active": self.active,
-            "created_at": self.created_at,
-            "last_run": self.last_run,
-            "last_training": self.last_training,
-            "training_iterations": self.training_iterations,
-            "performance_metrics": self.performance_metrics,
-            "config": self.config,
-            "children": [child.id for child in self.children]
+            "initialized": self.initialized,
+            "last_update": self.last_update.isoformat() if self.last_update else None,
+            "creation_time": self.creation_time.isoformat(),
+            "error_count": self.error_count,
+            "state": self.state,
+            "current_plan": self.current_plan,
+            "plan_step": self.plan_step,
+            "plan_complete": self.plan_complete
         }
     
-    def save_state(self, storage_handler) -> None:
+    def load_state(self, state: Dict[str, Any]) -> bool:
         """
-        Save the agent's state using the provided storage handler.
+        Load agent state from persisted data.
         
         Args:
-            storage_handler: Object with a save method to persist the state
-        """
-        state = self.get_state()
-        storage_handler.save(f"agent_{self.id}", state)
-        self.logger.debug(f"Saved state for agent {self.name}")
-    
-    def load_state(self, storage_handler) -> bool:
-        """
-        Load the agent's state using the provided storage handler.
-        
-        Args:
-            storage_handler: Object with a load method to retrieve the state
+            state: State dictionary to load
             
         Returns:
-            True if state was loaded successfully, False otherwise
+            Boolean indicating success
         """
-        state = storage_handler.load(f"agent_{self.id}")
-        if not state:
+        try:
+            # Only restore mutable/changeable properties
+            if "active" in state:
+                self.active = state["active"]
+            
+            if "initialized" in state:
+                self.initialized = state["initialized"]
+            
+            if "last_update" in state and state["last_update"]:
+                self.last_update = datetime.fromisoformat(state["last_update"])
+            
+            if "error_count" in state:
+                self.error_count = state["error_count"]
+            
+            if "state" in state:
+                self.state = state["state"]
+            
+            if "current_plan" in state:
+                self.current_plan = state["current_plan"]
+            
+            if "plan_step" in state:
+                self.plan_step = state["plan_step"]
+            
+            if "plan_complete" in state:
+                self.plan_complete = state["plan_complete"]
+            
+            self.logger.info(f"Loaded state for agent {self.name}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error loading agent state: {str(e)}")
             return False
-            
-        # Update fields from loaded state
-        self.active = state.get("active", self.active)
-        self.last_run = state.get("last_run", self.last_run)
-        self.last_training = state.get("last_training", self.last_training)
-        self.training_iterations = state.get("training_iterations", self.training_iterations)
-        self.performance_metrics = state.get("performance_metrics", self.performance_metrics)
-        self.config = state.get("config", self.config)
-        
-        self.logger.debug(f"Loaded state for agent {self.name}")
-        return True
     
-    def record_training(self) -> None:
-        """Record that a training iteration has occurred."""
-        self.last_training = time.time()
-        self.training_iterations += 1
-        self.logger.info(f"Completed training iteration {self.training_iterations} for agent {self.name}")
-    
-    def get_training_status(self) -> Dict[str, Any]:
-        """
-        Get the training status of the agent.
-        
-        Returns:
-            Dictionary with training information
-        """
-        return {
-            "agent_id": self.id,
-            "agent_name": self.name,
-            "agent_type": self.agent_type,
-            "last_training": self.last_training,
-            "training_iterations": self.training_iterations,
-            "time_since_last_training": time.time() - self.last_training if self.last_training > 0 else None
-        }
-    
-    def update_performance_metrics(self, metrics: Dict[str, Any]) -> None:
-        """
-        Update the agent's performance metrics.
-        
-        Args:
-            metrics: Dictionary with performance metrics to update
-        """
-        self.performance_metrics.update(metrics)
-    
-    @abstractmethod
-    def run(self, data: Any) -> Any:
-        """
-        Execute the agent's logic based on provided data.
-        Must be implemented by all concrete agent classes.
-        
-        Args:
-            data: Input data for the agent to process
-            
-        Returns:
-            Agent's output after processing the data
-        """
-        pass
-    
-    @abstractmethod
-    def train(self, training_data: Any) -> Tuple[bool, Dict[str, Any]]:
-        """
-        Train the agent using the provided data.
-        Must be implemented by all concrete agent classes.
-        
-        Args:
-            training_data: Data to use for training
-            
-        Returns:
-            Tuple of (success, training_metrics)
-        """
-        pass 
+    def __str__(self) -> str:
+        """String representation of the agent."""
+        return f"{self.name} ({self.agent_type}, {self.id[:8]})" 

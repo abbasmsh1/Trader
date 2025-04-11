@@ -1,112 +1,154 @@
-# Crypto Trader
+# Multi-Agent AI Trading System with Famous Trader Personas
 
-An agent-based cryptocurrency trading system that uses a hierarchical architecture to make trading decisions and manage a portfolio of digital assets.
+A cryptocurrency trading system featuring AI agents modeled after famous real-world traders (Warren Buffett, George Soros, Jim Simons, Peter Lynch). Each agent has a unique personality, trading strategy, and risk profile. The system uses Deep Q-Networks with continuous reinforcement learning for decision making.
 
 ## Features
 
-- **Agent-Based Architecture**: Hierarchical system with specialized agents for different tasks.
-- **Portfolio Management**: Intelligent asset allocation and risk management.
-- **Multiple Strategies**: Support for various trading strategies including trend following and mean reversion.
-- **Backtesting**: Test strategies against historical data before live trading.
-- **Wallet Management**: Track deposits, withdrawals, and trades in multiple currencies.
-- **Web Dashboard**: Monitor performance, portfolio status, and control the system.
-- **Demo Mode**: Practice trading without risking real money.
-
-## Structure
-
-The project is organized into the following components:
-
-- `agents/`: Trading agents and hierarchical agent structure
-- `models/`: Core data models and classes (Wallet, Order, Position, etc.)
-- `strategies/`: Trading strategy implementations
-- `data/`: Data management and market data providers
-- `utils/`: Utility functions and helper classes
-- `config/`: Configuration files
-- `frontend/`: Web dashboard and user interface
+- **Personalized AI Trader Agents**: Each agent mimics the philosophy and decision style of a famous trader
+- **Multiple Cryptocurrencies**: Trade BTC, ETH, SOL, and more against USDT
+- **Real-time & Historical Data**: Uses both real-time price feeds and historical data
+- **Simulated Trading**: Test strategies with simulated wallets (Binance Testnet support planned)
+- **State Persistence**: Save and restore the entire system state
+- **Minimum Trade Limit**: $5 minimum trade value enforced by the system
+- **Interactive Dashboard**: Monitor trader performance, portfolio values, and transactions
 
 ## Installation
 
+### Prerequisites
+
+- Python 3.8 or higher
+- Pip package manager
+- Virtual environment (recommended)
+
+### Setup
+
 1. Clone the repository:
-   ```
+   ```bash
    git clone https://github.com/yourusername/crypto-trader.git
    cd crypto-trader
    ```
 
-2. Create a virtual environment and activate it:
-   ```
+2. Create and activate a virtual environment:
+   ```bash
    python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   # On Windows
+   venv\Scripts\activate
+   # On macOS/Linux
+   source venv/bin/activate
    ```
 
 3. Install dependencies:
-   ```
+   ```bash
    pip install -r requirements.txt
    ```
 
-4. Install TA-Lib (may require additional steps depending on your OS):
-   - On Ubuntu: `apt-get install ta-lib`
-   - On macOS: `brew install ta-lib`
-   - On Windows: Download and install from [TA-Lib Binary](https://www.lfd.uci.edu/~gohlke/pythonlibs/#ta-lib)
-
-5. Configure your API keys and settings in `config/config.json`
+4. Set up environment variables by creating a `.env` file:
+   ```
+   BINANCE_API_KEY=your_api_key_here
+   BINANCE_API_SECRET=your_api_secret_here
+   ```
 
 ## Usage
 
-### Running the Trading System
+### Running in Demo Mode
 
-To start the trading system:
+Demo mode uses simulated market data and does not require API keys:
 
+```bash
+python main.py --demo
 ```
-python main.py
+
+### Running with Testnet
+
+For testing with real APIs but simulated money:
+
+```bash
+python main.py --testnet
 ```
 
-### Running the Web Dashboard
+### Running the Web Interface
 
-To start the web dashboard:
+The web interface provides a dashboard to monitor and control the trading system:
 
-```
+```bash
 cd frontend
 python app.py
 ```
 
 Then open your browser to `http://localhost:5000`
 
-### Demo Mode
+## Trader Agent Personalities
 
-If no exchange API keys are configured, the system will run in demo mode, simulating trades and portfolio management.
+### Buffett Trader (Value Investing)
+- **Strategy**: Long-term value investing
+- **Focus**: Fundamental analysis, margin of safety
+- **Holding Period**: Long (weeks to months)
+- **Risk Profile**: Low risk, steady returns
 
-## Agent Architecture
+### Soros Trader (Macro Trading)
+- **Strategy**: Reflexivity and market feedback loops
+- **Focus**: Macro trends, regime shifts, sentiment
+- **Holding Period**: Medium (days to weeks)
+- **Risk Profile**: Medium-high risk, high potential returns
 
-The system uses a hierarchical agent architecture:
+### Simons Trader (Quantitative)
+- **Strategy**: Statistical arbitrage and mean reversion
+- **Focus**: Pattern detection, correlations, statistical indicators
+- **Holding Period**: Short (minutes to days)
+- **Risk Profile**: Medium risk, consistent returns
 
-1. **System Controller**: The top-level agent that coordinates all activities
-2. **Portfolio Manager**: Manages asset allocation and risk
-3. **Strategy Agents**: Implements specific trading strategies
-4. **Execution Agent**: Handles order execution and exchange interaction
-5. **Data Agents**: Collects and processes market data
+### Lynch Trader (Growth Investing)
+- **Strategy**: Growth at a reasonable price
+- **Focus**: Emerging trends, momentum, "tenbagger" potential
+- **Holding Period**: Medium-long (weeks to months)
+- **Risk Profile**: Medium risk, high growth potential
 
-## Development
+## Project Structure
 
-### Adding a New Strategy
-
-To add a new trading strategy:
-
-1. Create a new file in `strategies/` directory
-2. Implement the strategy class inheriting from `BaseStrategy`
-3. Register your strategy in `config/config.json`
-
-### Adding Support for a New Exchange
-
-The system uses CCXT library for exchange integration. To add a new exchange:
-
-1. Ensure the exchange is supported by CCXT
-2. Add API configuration in `config/config.json`
-3. Test connectivity with the exchange
+```
+/crypto_trader/
+│
+├── agents/               # Agent implementations
+│   ├── trader/           # Trading agent implementations
+│   │   ├── buffett_trader.py
+│   │   ├── soros_trader.py
+│   │   ├── simons_trader.py
+│   │   ├── lynch_trader.py
+│   │   └── base_trader.py
+│   ├── system_controller.py
+│   └── base_agent.py
+│
+├── config/               # Configuration files
+│   └── config.json
+│
+├── data/                 # Data storage
+│   └── historical/       # Historical market data
+│
+├── db/                   # Database implementations
+│   └── db_handler.py
+│
+├── frontend/             # Web interface
+│   ├── static/
+│   ├── templates/
+│   └── app.py
+│
+├── models/               # Model implementations
+│   └── wallet.py
+│
+├── utils/                # Utility functions
+│   └── agent_manager.py
+│
+├── main.py               # Main entry point
+├── requirements.txt      # Dependencies
+└── README.md             # This file
+```
 
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Disclaimer
+## Acknowledgements
 
-This software is for educational purposes only. Cryptocurrency trading involves significant risk. Use at your own risk. 
+- Inspired by the trading strategies of Warren Buffett, George Soros, Jim Simons, and Peter Lynch
+- Uses CCXT for cryptocurrency exchange connectivity
+- Built with PyTorch for reinforcement learning 

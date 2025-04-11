@@ -1,414 +1,305 @@
-// Crypto Trader Portfolio JavaScript
+/**
+ * Portfolio management JavaScript.
+ */
 
-// Socket.io connection
-const socket = io();
+// Global variables
+let currentAgentId = null;
+let portfolioData = null;
+let tradeHistory = [];
+let performanceMetrics = {};
 
-// Price data cache
-let priceData = {};
-
-// Document ready function
+// Initialize the page
 document.addEventListener('DOMContentLoaded', function() {
-    // Set up event listeners
-    setupEventListeners();
+    // Get agent ID from URL or use default
+    const urlParams = new URLSearchParams(window.location.search);
+    currentAgentId = urlParams.get('agent_id') || 'default_agent';
     
-    // Fetch initial data
-    fetchPortfolioData();
+    // Load initial data
+    loadPortfolioData();
+    loadTradeHistory();
+    loadPerformanceMetrics();
     
-    // Connect system status indicators
-    connectSystemControls();
+    // Set up refresh button
+    document.getElementById('refresh-btn').addEventListener('click', function() {
+        loadPortfolioData();
+        loadTradeHistory();
+        loadPerformanceMetrics();
+    });
 });
 
-// Set up event listeners for the page
-function setupEventListeners() {
-    // Refresh button
-    const refreshBtn = document.getElementById('refresh-btn');
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', fetchPortfolioData);
-    }
-    
-    // Sell buttons
-    const sellButtons = document.querySelectorAll('.sell-btn');
-    sellButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const asset = this.getAttribute('data-asset');
-            openSellModal(asset);
-        });
-    });
-    
-    // Buy button
-    const buyButtons = document.querySelectorAll('.buy-btn');
-    buyButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            window.location.href = '/#demo-buy-form';
-        });
-    });
-    
-    // Modal sell all link
-    const sellAllLink = document.getElementById('sell-all-link');
-    if (sellAllLink) {
-        sellAllLink.addEventListener('click', function(e) {
-            e.preventDefault();
-            const balance = parseFloat(document.getElementById('modal-asset-balance').textContent);
-            document.getElementById('modal-sell-amount').value = balance;
-            updateSellValue();
-        });
-    }
-    
-    // Modal sell amount input
-    const modalSellAmount = document.getElementById('modal-sell-amount');
-    if (modalSellAmount) {
-        modalSellAmount.addEventListener('input', updateSellValue);
-    }
-    
-    // Modal confirm sell button
-    const confirmSellBtn = document.getElementById('confirm-sell-btn');
-    if (confirmSellBtn) {
-        confirmSellBtn.addEventListener('click', executeSell);
-    }
-    
-    // Socket.io event listeners
-    socket.on('portfolio_update', function(data) {
+// Load portfolio data
+async function loadPortfolioData() {
+    try {
+        const response = await fetch(`/api/portfolio/${currentAgentId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load portfolio data');
+        }
+        
+        const data = await response.json();
+        portfolioData = data;
+        
+        // Update UI
         updatePortfolioUI(data);
-    });
-    
-    socket.on('price_update', function(data) {
-        priceData = data;
-        updatePrices();
-    });
-    
-    socket.on('system_status', function(data) {
-        updateSystemStatus(data);
-    });
+    } catch (error) {
+        console.error('Error loading portfolio:', error);
+        showError('Failed to load portfolio data');
+    }
 }
 
-// Fetch portfolio data from API
-function fetchPortfolioData() {
-    // Show loading state
-    document.getElementById('refresh-btn').innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Loading...';
-    
-    // Get portfolio data
-    fetch('/api/portfolio')
-        .then(response => response.json())
-        .then(data => {
-            updatePortfolioUI(data);
-            
-            // Get prices data
-            return fetch('/api/prices');
-        })
-        .then(response => response.json())
-        .then(data => {
-            priceData = data;
-            updatePrices();
-        })
-        .catch(error => {
-            console.error('Error fetching data:', error);
-        })
-        .finally(() => {
-            // Restore refresh button
-            document.getElementById('refresh-btn').innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh';
-        });
-    
-    // Get system status
-    fetch('/api/system/status')
-        .then(response => response.json())
-        .then(data => {
-            updateSystemStatus(data);
-        })
-        .catch(error => console.error('Error fetching system status:', error));
+// Load trade history
+async function loadTradeHistory() {
+    try {
+        const response = await fetch(`/api/trades/${currentAgentId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load trade history');
+        }
+        
+        tradeHistory = await response.json();
+        
+        // Update trade history table
+        updateTradeHistoryTable();
+    } catch (error) {
+        console.error('Error loading trade history:', error);
+        showError('Failed to load trade history');
+    }
 }
 
-// Update portfolio UI with data
+// Load performance metrics
+async function loadPerformanceMetrics() {
+    try {
+        const response = await fetch(`/api/performance/${currentAgentId}`);
+        if (!response.ok) {
+            throw new Error('Failed to load performance metrics');
+        }
+        
+        const metrics = await response.json();
+        performanceMetrics = metrics[0] || {};  // Get latest metrics
+        
+        // Update performance metrics display
+        updatePerformanceMetrics();
+    } catch (error) {
+        console.error('Error loading performance metrics:', error);
+        showError('Failed to load performance metrics');
+    }
+}
+
+// Update portfolio UI
 function updatePortfolioUI(data) {
-    // Update total value
-    const totalValue = document.getElementById('total-value');
-    if (totalValue) {
-        totalValue.textContent = (data.total_value || 0).toFixed(2);
-    }
+    if (!data) return;
     
-    // Update base currency
-    const baseCurrency = document.getElementById('base-currency');
-    if (baseCurrency && data.balances) {
-        baseCurrency.textContent = (data.balances.USDT || 0).toFixed(2);
-    }
-    
-    // Update assets value
-    const assetsValue = document.getElementById('assets-value');
-    if (assetsValue && data.balances) {
-        const baseBalance = data.balances.USDT || 0;
-        const assetVal = (data.total_value || 0) - baseBalance;
-        assetsValue.textContent = assetVal.toFixed(2);
-    }
-    
-    // Update number of assets
-    const numAssets = document.getElementById('num-assets');
-    if (numAssets && data.holdings) {
-        const assetCount = Object.keys(data.holdings).filter(key => key !== 'USDT' && data.holdings[key].value > 0).length;
-        numAssets.textContent = assetCount;
-    }
+    // Update summary cards
+    document.getElementById('total-value').textContent = formatCurrency(data.portfolio.value);
+    document.getElementById('base-currency').textContent = formatCurrency(data.portfolio.base_currency);
+    document.getElementById('assets-value').textContent = formatCurrency(data.portfolio.assets_value);
+    document.getElementById('num-assets').textContent = data.portfolio.num_assets;
     
     // Update portfolio table
-    updatePortfolioTable(data);
+    updatePortfolioTable(data.portfolio.holdings);
+    
+    // Update recent trades
+    updateRecentTrades(data.recent_trades);
 }
 
-// Update the portfolio table
-function updatePortfolioTable(data) {
-    const portfolioTable = document.getElementById('portfolio-table');
-    if (!portfolioTable) return;
+// Update portfolio table
+function updatePortfolioTable(holdings) {
+    const tableBody = document.getElementById('portfolio-table-body');
+    tableBody.innerHTML = '';
     
-    let tableContent = '';
-    
-    // Add rows for crypto assets
-    if (data.holdings) {
-        // Sort holdings by value (descending)
-        const sortedAssets = Object.keys(data.holdings)
-            .filter(asset => asset !== 'USDT' && data.holdings[asset].value > 0)
-            .sort((a, b) => data.holdings[b].value - data.holdings[a].value);
-        
-        // Add rows for each asset
-        for (const asset of sortedAssets) {
-            const holding = data.holdings[asset];
-            const percentOfPortfolio = (holding.value / data.total_value * 100).toFixed(1);
-            
-            tableContent += `
-                <tr>
-                    <td><strong>${asset}</strong></td>
-                    <td>${holding.amount.toFixed(6)}</td>
-                    <td>$${holding.price.toFixed(2)}</td>
-                    <td>$${holding.value.toFixed(2)}</td>
-                    <td>${percentOfPortfolio}%</td>
-                    <td>
-                        <button class="btn btn-sm btn-danger sell-btn" data-asset="${asset}">Sell</button>
-                    </td>
-                </tr>
-            `;
-        }
-    }
-    
-    // Add row for base currency (USDT)
-    if (data.balances && data.balances.USDT) {
-        const usdtBalance = data.balances.USDT;
-        const percentOfPortfolio = (usdtBalance / data.total_value * 100).toFixed(1);
-        
-        tableContent += `
-            <tr>
-                <td><strong>USDT</strong></td>
-                <td>${usdtBalance.toFixed(2)}</td>
-                <td>$1.00</td>
-                <td>$${usdtBalance.toFixed(2)}</td>
-                <td>${percentOfPortfolio}%</td>
-                <td>
-                    <button class="btn btn-sm btn-success buy-btn">Buy</button>
-                </td>
-            </tr>
+    holdings.forEach(holding => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${holding.symbol}</td>
+            <td>${formatNumber(holding.quantity)}</td>
+            <td>${formatCurrency(holding.price)}</td>
+            <td class="${holding.price_change >= 0 ? 'text-success' : 'text-danger'}">
+                ${formatPercentage(holding.price_change)}
+            </td>
+            <td>${formatCurrency(holding.value)}</td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="showTradeModal('buy', '${holding.symbol}')">Buy</button>
+                <button class="btn btn-sm btn-danger" onclick="showTradeModal('sell', '${holding.symbol}')">Sell</button>
+            </td>
         `;
-    }
-    
-    // Update table content
-    portfolioTable.innerHTML = tableContent;
-    
-    // Re-attach event listeners to new buttons
-    const sellButtons = document.querySelectorAll('.sell-btn');
-    sellButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            const asset = this.getAttribute('data-asset');
-            openSellModal(asset);
-        });
-    });
-    
-    const buyButtons = document.querySelectorAll('.buy-btn');
-    buyButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            window.location.href = '/#demo-buy-form';
-        });
+        tableBody.appendChild(row);
     });
 }
 
-// Update price information
-function updatePrices() {
-    // If we have a modal open, update its values
-    updateSellValue();
+// Update trade history table
+function updateTradeHistoryTable() {
+    const tableBody = document.getElementById('trade-history-body');
+    tableBody.innerHTML = '';
+    
+    tradeHistory.forEach(trade => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${formatDateTime(trade.timestamp)}</td>
+            <td>${trade.symbol}</td>
+            <td class="${trade.type === 'buy' ? 'text-success' : 'text-danger'}">${trade.type.toUpperCase()}</td>
+            <td>${formatNumber(trade.quantity)}</td>
+            <td>${formatCurrency(trade.price)}</td>
+            <td>${formatCurrency(trade.value)}</td>
+            <td>${formatCurrency(trade.fee)}</td>
+        `;
+        tableBody.appendChild(row);
+    });
 }
 
-// Open the sell modal for an asset
-function openSellModal(asset) {
-    const sellModal = new bootstrap.Modal(document.getElementById('sellModal'));
+// Update performance metrics
+function updatePerformanceMetrics() {
+    const metrics = performanceMetrics;
     
-    // Fetch current balance for the asset
-    fetch('/api/portfolio')
-        .then(response => response.json())
-        .then(data => {
-            if (data.holdings && data.holdings[asset]) {
-                // Set modal fields
-                document.getElementById('modal-sell-asset').value = asset;
-                document.getElementById('modal-asset-symbol').textContent = asset;
-                document.getElementById('modal-asset-balance').textContent = data.holdings[asset].amount.toFixed(6);
-                
-                // Clear amount field
-                document.getElementById('modal-sell-amount').value = '';
-                document.getElementById('modal-sell-value').value = '';
-                
-                // Show the modal
-                sellModal.show();
-            } else {
-                alert(`No balance found for ${asset}`);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching asset balance:', error);
-            alert('Could not fetch asset balance. Please try again.');
-        });
+    // Update metrics display
+    document.getElementById('total-trades').textContent = metrics.total_trades || 0;
+    document.getElementById('win-rate').textContent = formatPercentage(metrics.win_rate || 0);
+    document.getElementById('profit-factor').textContent = formatNumber(metrics.profit_factor || 0);
+    document.getElementById('profit-percentage').textContent = formatPercentage(metrics.profit_percentage || 0);
+    document.getElementById('average-win').textContent = formatPercentage(metrics.average_win || 0);
+    document.getElementById('average-loss').textContent = formatPercentage(metrics.average_loss || 0);
+    document.getElementById('largest-win').textContent = formatPercentage(metrics.largest_win || 0);
+    document.getElementById('largest-loss').textContent = formatPercentage(metrics.largest_loss || 0);
 }
 
-// Update the sell value based on amount
-function updateSellValue() {
-    const asset = document.getElementById('modal-sell-asset').value;
-    const amountInput = document.getElementById('modal-sell-amount');
-    const valueInput = document.getElementById('modal-sell-value');
+// Show trade modal
+function showTradeModal(type, symbol) {
+    const modal = document.getElementById('trade-modal');
+    const modalTitle = document.getElementById('trade-modal-title');
+    const tradeForm = document.getElementById('trade-form');
     
-    if (!asset || !amountInput || !valueInput) return;
+    // Update modal title
+    modalTitle.textContent = `${type.toUpperCase()} ${symbol}`;
     
-    const amount = parseFloat(amountInput.value) || 0;
+    // Update form
+    tradeForm.innerHTML = `
+        <div class="mb-3">
+            <label for="trade-amount" class="form-label">Amount (${type === 'buy' ? 'USDT' : symbol})</label>
+            <input type="number" class="form-control" id="trade-amount" min="5" step="0.000001" required>
+            <div class="form-text">Minimum trade amount: $5.00</div>
+        </div>
+        <div class="mb-3">
+            <label for="trade-price" class="form-label">Price (USDT)</label>
+            <input type="number" class="form-control" id="trade-price" readonly>
+        </div>
+        <div class="mb-3">
+            <label for="trade-value" class="form-label">Value (USDT)</label>
+            <input type="number" class="form-control" id="trade-value" readonly>
+        </div>
+        <button type="submit" class="btn btn-primary">Execute ${type.toUpperCase()}</button>
+    `;
     
-    // Get current price from price data
-    if (priceData && priceData[asset]) {
-        const price = priceData[asset];
-        const value = amount * price;
-        valueInput.value = value.toFixed(2);
-    } else {
-        // If price not available, fetch from API
-        fetch('/api/prices')
-            .then(response => response.json())
-            .then(data => {
-                priceData = data;
-                if (data[asset]) {
-                    const price = data[asset];
-                    const value = amount * price;
-                    valueInput.value = value.toFixed(2);
-                }
-            })
-            .catch(error => console.error('Error fetching prices:', error));
-    }
+    // Show modal
+    const modalInstance = new bootstrap.Modal(modal);
+    modalInstance.show();
+    
+    // Set up form submission
+    tradeForm.onsubmit = function(e) {
+        e.preventDefault();
+        executeTrade(type, symbol);
+    };
+    
+    // Set up amount input handler
+    const amountInput = document.getElementById('trade-amount');
+    amountInput.oninput = function() {
+        updateTradePreview(type, symbol);
+    };
 }
 
-// Execute sell order
-function executeSell() {
-    const asset = document.getElementById('modal-sell-asset').value;
-    const amountInput = document.getElementById('modal-sell-amount');
-    const amount = parseFloat(amountInput.value);
+// Update trade preview
+function updateTradePreview(type, symbol) {
+    const amount = parseFloat(document.getElementById('trade-amount').value) || 0;
+    const price = getCurrentPrice(symbol);
+    const value = type === 'buy' ? amount : amount * price;
     
-    if (!asset || isNaN(amount) || amount <= 0) {
-        alert('Please enter a valid amount to sell.');
+    document.getElementById('trade-price').value = price.toFixed(2);
+    document.getElementById('trade-value').value = value.toFixed(2);
+}
+
+// Execute trade
+async function executeTrade(type, symbol) {
+    const amount = parseFloat(document.getElementById('trade-amount').value);
+    const value = parseFloat(document.getElementById('trade-value').value);
+    
+    // Validate minimum trade amount
+    if (value < 5) {
+        showError('Minimum trade amount is $5.00');
         return;
     }
     
-    // Disable button during request
-    const confirmButton = document.getElementById('confirm-sell-btn');
-    confirmButton.disabled = true;
-    confirmButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-    
-    // Send sell request
-    fetch('/api/demo/sell', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            symbol: asset,
-            quantity: amount
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    try {
+        const response = await fetch('/api/trade', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                agent_id: currentAgentId,
+                type: type,
+                symbol: symbol,
+                amount: amount,
+                value: value
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Trade execution failed');
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+            showSuccess(`Trade executed successfully: ${type.toUpperCase()} ${amount} ${symbol}`);
+            // Refresh data
+            loadPortfolioData();
+            loadTradeHistory();
+            loadPerformanceMetrics();
             // Close modal
-            const sellModal = bootstrap.Modal.getInstance(document.getElementById('sellModal'));
-            sellModal.hide();
-            
-            // Show success message
-            alert(`Successfully sold ${data.quantity.toFixed(6)} ${data.symbol} for $${data.amount.toFixed(2)}`);
-            
-            // Refresh portfolio data
-            fetchPortfolioData();
+            bootstrap.Modal.getInstance(document.getElementById('trade-modal')).hide();
         } else {
-            // Show error
-            alert(`Error: ${data.error}`);
+            showError(result.message || 'Trade execution failed');
         }
-    })
-    .catch(error => {
-        console.error('Error executing sell:', error);
-        alert('An error occurred while executing the sell order. Please try again.');
-    })
-    .finally(() => {
-        // Restore button
-        confirmButton.disabled = false;
-        confirmButton.innerHTML = 'Sell';
-    });
-}
-
-// Update system status in the UI
-function updateSystemStatus(data) {
-    const statusIndicator = document.getElementById('status-indicator');
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (statusIndicator && startButton && stopButton) {
-        const isRunning = data.status === 'running';
-        
-        // Update status indicator
-        statusIndicator.textContent = isRunning ? 'Running' : 'Stopped';
-        statusIndicator.classList.remove('bg-success', 'bg-danger');
-        statusIndicator.classList.add(isRunning ? 'bg-success' : 'bg-danger');
-        
-        // Update buttons
-        startButton.disabled = isRunning;
-        stopButton.disabled = !isRunning;
+    } catch (error) {
+        console.error('Error executing trade:', error);
+        showError('Failed to execute trade');
     }
 }
 
-// Connect system control buttons
-function connectSystemControls() {
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (startButton) {
-        startButton.addEventListener('click', startTradingSystem);
-    }
-    
-    if (stopButton) {
-        stopButton.addEventListener('click', stopTradingSystem);
-    }
+// Utility functions
+function formatCurrency(value) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD'
+    }).format(value);
 }
 
-// Start the trading system
-function startTradingSystem() {
-    fetch('/api/system/start', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'started') {
-            updateSystemStatus({ status: 'running' });
-        }
-    })
-    .catch(error => console.error('Error starting system:', error));
+function formatNumber(value) {
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 8
+    }).format(value);
 }
 
-// Stop the trading system
-function stopTradingSystem() {
-    fetch('/api/system/stop', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'stopped') {
-            updateSystemStatus({ status: 'stopped' });
-        }
-    })
-    .catch(error => console.error('Error stopping system:', error));
+function formatPercentage(value) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'percent',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value / 100);
+}
+
+function formatDateTime(timestamp) {
+    return new Date(timestamp).toLocaleString();
+}
+
+function showError(message) {
+    // Implement error notification
+    console.error(message);
+}
+
+function showSuccess(message) {
+    // Implement success notification
+    console.log(message);
+}
+
+function getCurrentPrice(symbol) {
+    // Get current price from portfolio data
+    const holding = portfolioData.portfolio.holdings.find(h => h.symbol === symbol);
+    return holding ? holding.price : 0;
 } 

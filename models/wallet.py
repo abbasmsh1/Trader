@@ -24,19 +24,20 @@ class Wallet:
     """
     
     def __init__(self, 
-                 initial_balance: float = 10000.0, 
+                 initial_balance: float = 20.0, 
                  base_currency: str = "USDT",
                  name: str = "Main Trading Wallet"):
         """
         Initialize a new wallet.
         
         Args:
-            initial_balance: Initial balance in base currency (default: 10000 USDT)
+            initial_balance: Initial balance in base currency (default: 20.0 USDT)
             base_currency: Base currency symbol (default: USDT)
             name: Wallet name for identification
         """
         self.name = name
         self.base_currency = base_currency
+        self.initial_balance = initial_balance  # Store initial balance as instance attribute
         self.creation_time = datetime.now()
         self.last_modified = self.creation_time
         self.wallet_id = str(uuid.uuid4())
@@ -249,126 +250,53 @@ class Wallet:
             limit: Maximum number of trades to return
             
         Returns:
-            List of trade records matching criteria, most recent first
+            List of trade dictionaries
         """
-        filtered_trades = self.trade_history.copy()
+        # Start with full history
+        filtered_history = self.trade_history.copy()
         
         # Apply filters
         if start_time:
-            filtered_trades = [t for t in filtered_trades if datetime.fromisoformat(t["timestamp"]) >= start_time]
+            filtered_history = [
+                trade for trade in filtered_history 
+                if datetime.fromisoformat(trade["timestamp"]) >= start_time
+            ]
             
         if end_time:
-            filtered_trades = [t for t in filtered_trades if datetime.fromisoformat(t["timestamp"]) <= end_time]
+            filtered_history = [
+                trade for trade in filtered_history 
+                if datetime.fromisoformat(trade["timestamp"]) <= end_time
+            ]
             
         if trade_type:
-            filtered_trades = [t for t in filtered_trades if t["type"] == trade_type]
+            filtered_history = [
+                trade for trade in filtered_history 
+                if trade["type"] == trade_type
+            ]
             
         if currency:
-            filtered_trades = [t for t in filtered_trades if 
-                              t["from_currency"] == currency or t["to_currency"] == currency]
+            filtered_history = [
+                trade for trade in filtered_history 
+                if trade["from_currency"] == currency or trade["to_currency"] == currency
+            ]
         
-        # Sort by timestamp, most recent first
-        filtered_trades.sort(key=lambda t: t["timestamp"], reverse=True)
+        # Sort by timestamp (newest first)
+        filtered_history.sort(
+            key=lambda x: datetime.fromisoformat(x["timestamp"]), 
+            reverse=True
+        )
         
         # Apply limit
-        if limit and len(filtered_trades) > limit:
-            filtered_trades = filtered_trades[:limit]
-            
-        return filtered_trades
-    
-    def add_deposit(self, currency: str, amount: float, source: str = "external") -> Dict[str, Any]:
-        """
-        Record a deposit into the wallet.
-        
-        Args:
-            currency: Currency being deposited
-            amount: Amount being deposited
-            source: Source of the deposit
-            
-        Returns:
-            Dictionary with deposit details
-        """
-        if amount <= 0:
-            raise ValueError("Deposit amount must be positive")
-            
-        timestamp = datetime.now()
-        deposit_id = str(uuid.uuid4())
-        
-        deposit = {
-            "id": deposit_id,
-            "type": "deposit",
-            "timestamp": timestamp.isoformat(),
-            "currency": currency,
-            "amount": amount,
-            "source": source
-        }
-        
-        # Update balance
-        self.update_balance(currency, amount)
-        
-        # Record deposit
-        self.deposits_withdrawals.append(deposit)
-        self.last_modified = timestamp
-        
-        self.logger.info(f"Deposit recorded: {amount} {currency} from {source}")
-        
-        return deposit
-    
-    def add_withdrawal(self, currency: str, amount: float, destination: str = "external") -> Dict[str, Any]:
-        """
-        Record a withdrawal from the wallet.
-        
-        Args:
-            currency: Currency being withdrawn
-            amount: Amount being withdrawn
-            destination: Destination of the withdrawal
-            
-        Returns:
-            Dictionary with withdrawal details
-            
-        Raises:
-            ValueError: If insufficient funds
-        """
-        if amount <= 0:
-            raise ValueError("Withdrawal amount must be positive")
-            
-        if self.get_balance(currency) < amount:
-            raise ValueError(f"Insufficient {currency} for withdrawal")
-            
-        timestamp = datetime.now()
-        withdrawal_id = str(uuid.uuid4())
-        
-        withdrawal = {
-            "id": withdrawal_id,
-            "type": "withdrawal",
-            "timestamp": timestamp.isoformat(),
-            "currency": currency,
-            "amount": amount,
-            "destination": destination
-        }
-        
-        # Update balance
-        self.update_balance(currency, -amount)
-        
-        # Record withdrawal
-        self.deposits_withdrawals.append(withdrawal)
-        self.last_modified = timestamp
-        
-        self.logger.info(f"Withdrawal recorded: {amount} {currency} to {destination}")
-        
-        return withdrawal
+        return filtered_history[:limit]
     
     def update_prices(self, price_data: Dict[str, float]) -> None:
         """
-        Update last known prices for currencies.
+        Update last known prices for value calculation.
         
         Args:
-            price_data: Dictionary mapping currency symbols to current prices in base currency
+            price_data: Dictionary mapping currency symbols to prices in base currency
         """
-        for currency, price in price_data.items():
-            if currency != self.base_currency:  # No need to store base currency price
-                self.last_prices[currency] = price
-                
+        self.last_prices.update(price_data)
         self.logger.debug(f"Updated prices for {len(price_data)} currencies")
     
     def calculate_total_value(self, price_data: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
@@ -430,113 +358,86 @@ class Wallet:
             
         return valuation
     
-    def get_performance_metrics(self, 
-                               period: str = "all",
-                               reference_currency: str = None) -> Dict[str, Any]:
+    def calculate_performance(self, 
+                             period_start: Optional[datetime] = None,
+                             period_end: Optional[datetime] = None) -> Dict[str, Any]:
         """
         Calculate performance metrics for the wallet.
         
         Args:
-            period: Time period for metrics ("day", "week", "month", "year", "all")
-            reference_currency: Currency to measure performance in (defaults to base_currency)
+            period_start: Start of period for calculation (default: wallet creation)
+            period_end: End of period for calculation (default: now)
             
         Returns:
             Dictionary with performance metrics
         """
-        if not reference_currency:
-            reference_currency = self.base_currency
+        if period_start is None:
+            period_start = self.creation_time
             
-        if not self.performance_history:
-            return {
-                "period": period,
-                "reference_currency": reference_currency,
-                "start_value": None,
-                "current_value": None,
-                "absolute_return": None,
-                "percent_return": None,
-                "max_value": None,
-                "min_value": None,
-                "volatility": None
-            }
+        if period_end is None:
+            period_end = datetime.now()
             
-        # Get filtered performance data based on period
-        cutoff_date = None
-        now = datetime.now()
+        # Get history points within the period
+        history_points = [
+            point for point in self.performance_history
+            if datetime.fromisoformat(point["timestamp"]) >= period_start
+            and datetime.fromisoformat(point["timestamp"]) <= period_end
+        ]
         
-        if period == "day":
-            cutoff_date = datetime(now.year, now.month, now.day) 
-        elif period == "week":
-            cutoff_date = datetime(now.year, now.month, now.day) - datetime.timedelta(days=now.weekday())
-        elif period == "month":
-            cutoff_date = datetime(now.year, now.month, 1)
-        elif period == "year":
-            cutoff_date = datetime(now.year, 1, 1)
-            
-        if cutoff_date:
-            filtered_data = [p for p in self.performance_history 
-                            if datetime.fromisoformat(p["timestamp"]) >= cutoff_date]
+        # If no history points in period, return empty metrics
+        if not history_points:
+            return {
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "initial_value": self.initial_balance,
+                "final_value": self.get_total_value(),
+                "absolute_return": 0.0,
+                "percentage_return": 0.0,
+                "annualized_return": 0.0
+            }
+        
+        # Get initial and final values
+        history_points.sort(key=lambda x: datetime.fromisoformat(x["timestamp"]))
+        initial_value = history_points[0]["total_value"]
+        final_value = history_points[-1]["total_value"]
+        
+        # Calculate returns
+        absolute_return = final_value - initial_value
+        percentage_return = (absolute_return / initial_value) * 100 if initial_value > 0 else 0.0
+        
+        # Calculate time period in years
+        period_start_time = datetime.fromisoformat(history_points[0]["timestamp"])
+        period_end_time = datetime.fromisoformat(history_points[-1]["timestamp"])
+        years = (period_end_time - period_start_time).total_seconds() / (365.25 * 24 * 60 * 60)
+        
+        # Calculate annualized return
+        if years > 0:
+            annualized_return = ((1 + percentage_return / 100) ** (1 / years) - 1) * 100
         else:
-            filtered_data = self.performance_history
-            
-        if not filtered_data:
-            return {
-                "period": period,
-                "reference_currency": reference_currency,
-                "start_value": None,
-                "current_value": None,
-                "absolute_return": None,
-                "percent_return": None,
-                "max_value": None,
-                "min_value": None,
-                "volatility": None
-            }
-            
-        # Calculate metrics
-        start_value = filtered_data[0]["total_value"]
-        current_value = filtered_data[-1]["total_value"]
+            annualized_return = 0.0
         
-        values = [p["total_value"] for p in filtered_data]
-        max_value = max(values)
-        min_value = min(values)
-        
-        absolute_return = current_value - start_value
-        percent_return = (current_value / start_value - 1) * 100 if start_value > 0 else 0
-        
-        # Calculate volatility if we have enough data points
-        volatility = None
-        if len(filtered_data) > 2:
-            import numpy as np
-            returns = []
-            for i in range(1, len(values)):
-                daily_return = values[i] / values[i-1] - 1
-                returns.append(daily_return)
-            volatility = np.std(returns) * 100 if returns else None
-            
         return {
-            "period": period,
-            "reference_currency": reference_currency,
-            "start_value": start_value,
-            "current_value": current_value,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "initial_value": initial_value,
+            "final_value": final_value,
             "absolute_return": absolute_return,
-            "percent_return": percent_return,
-            "max_value": max_value,
-            "min_value": min_value,
-            "max_drawdown": (min_value / max_value - 1) * 100 if max_value > 0 else 0,
-            "volatility": volatility
+            "percentage_return": percentage_return,
+            "annualized_return": annualized_return
         }
     
     def save_to_file(self, filepath: str) -> bool:
         """
-        Save wallet data to a JSON file.
+        Save wallet state to a JSON file.
         
         Args:
-            filepath: Path to save the wallet data
+            filepath: Path to save the wallet state
             
         Returns:
             Boolean indicating success
         """
         try:
-            data = {
+            wallet_data = {
                 "wallet_id": self.wallet_id,
                 "name": self.name,
                 "base_currency": self.base_currency,
@@ -549,12 +450,10 @@ class Wallet:
                 "last_prices": self.last_prices
             }
             
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            
             with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
+                json.dump(wallet_data, f, indent=2)
                 
-            self.logger.info(f"Wallet data saved to {filepath}")
+            self.logger.info(f"Saved wallet state to {filepath}")
             return True
             
         except Exception as e:
@@ -562,39 +461,42 @@ class Wallet:
             return False
     
     @classmethod
-    def load_from_file(cls, filepath: str) -> 'Wallet':
+    def load_from_file(cls, filepath: str) -> Optional['Wallet']:
         """
-        Load wallet data from a JSON file.
+        Load wallet state from a JSON file.
         
         Args:
-            filepath: Path to the wallet data file
+            filepath: Path to load the wallet state from
             
         Returns:
-            Wallet instance with loaded data
-            
-        Raises:
-            FileNotFoundError: If the file doesn't exist
-            ValueError: If the file contains invalid data
+            Wallet instance or None if loading failed
         """
-        with open(filepath, 'r') as f:
-            data = json.load(f)
+        try:
+            with open(filepath, 'r') as f:
+                wallet_data = json.load(f)
             
-        wallet = cls(
-            initial_balance=0,  # Will be overridden by loaded balances
-            base_currency=data.get("base_currency", "USDT"),
-            name=data.get("name", "Loaded Wallet")
-        )
-        
-        # Set properties from loaded data
-        wallet.wallet_id = data.get("wallet_id", wallet.wallet_id)
-        wallet.creation_time = datetime.fromisoformat(data.get("creation_time", wallet.creation_time.isoformat()))
-        wallet.last_modified = datetime.fromisoformat(data.get("last_modified", wallet.last_modified.isoformat()))
-        wallet.balances = data.get("balances", {})
-        wallet.trade_history = data.get("trade_history", [])
-        wallet.deposits_withdrawals = data.get("deposits_withdrawals", [])
-        wallet.performance_history = data.get("performance_history", [])
-        wallet.last_prices = data.get("last_prices", {})
-        
-        wallet.logger.info(f"Loaded wallet from {filepath}")
-        
-        return wallet 
+            # Create a new wallet instance
+            wallet = cls(
+                initial_balance=0.0,  # Will be overwritten by loaded balances
+                base_currency=wallet_data["base_currency"],
+                name=wallet_data["name"]
+            )
+            
+            # Restore wallet ID and timestamps
+            wallet.wallet_id = wallet_data["wallet_id"]
+            wallet.creation_time = datetime.fromisoformat(wallet_data["creation_time"])
+            wallet.last_modified = datetime.fromisoformat(wallet_data["last_modified"])
+            
+            # Restore balances, trade history, etc.
+            wallet.balances = wallet_data["balances"]
+            wallet.trade_history = wallet_data["trade_history"]
+            wallet.deposits_withdrawals = wallet_data["deposits_withdrawals"]
+            wallet.performance_history = wallet_data["performance_history"]
+            wallet.last_prices = wallet_data["last_prices"]
+            
+            wallet.logger.info(f"Loaded wallet from {filepath}")
+            return wallet
+            
+        except Exception as e:
+            logging.error(f"Error loading wallet from file: {str(e)}")
+            return None 

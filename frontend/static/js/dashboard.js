@@ -1,117 +1,214 @@
-// Crypto Trader Dashboard JavaScript
+// Dashboard JavaScript
 
-// Socket.io connection
-const socket = io();
-
-// Chart.js configuration
-let portfolioChart;
-const portfolioChartData = {
-    labels: [],
-    datasets: [{
-        label: 'Portfolio Value (USD)',
-        backgroundColor: 'rgba(78, 115, 223, 0.05)',
-        borderColor: 'rgba(78, 115, 223, 1)',
-        pointBackgroundColor: 'rgba(78, 115, 223, 1)',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: 'rgba(78, 115, 223, 1)',
-        pointRadius: 3,
-        pointHoverRadius: 5,
-        data: [],
-        fill: true,
-        tension: 0.1
-    }]
-};
-
-// Price change data for 24h comparison
-let priceChangeData = {};
-
-// Store portfolio history to calculate changes
-let portfolioHistory = [];
-
-// Document ready function
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize the portfolio chart
-    initPortfolioChart();
+// Document ready handler
+$(document).ready(function() {
+    // Initialize the dashboard
+    initDashboard();
     
     // Set up event listeners
     setupEventListeners();
     
-    // Initialize UI with default data
-    updateUIWithDefaults();
+    // Fetch initial data
+    fetchPortfolioData();
+    fetchPriceData();
     
-    // Connect system status indicators
-    connectSystemControls();
+    // Set up refresh interval (every 30 seconds)
+    setInterval(function() {
+        fetchPortfolioData();
+        fetchPriceData();
+    }, 30000);
 });
 
-// Initialize Chart.js portfolio chart
-function initPortfolioChart() {
-    const ctx = document.getElementById('portfolioChart').getContext('2d');
+// Initialize dashboard components
+function initDashboard() {
+    // Initialize charts with empty data
+    initPortfolioValueChart();
+    initAssetAllocationChart();
     
-    portfolioChart = new Chart(ctx, {
+    // Initialize trader dropdown
+    populateTraderDropdown();
+}
+
+// Set up event listeners
+function setupEventListeners() {
+    // Refresh button click
+    $('.refresh-btn').on('click', function() {
+        $(this).addClass('fa-spin');
+        fetchPortfolioData().then(() => {
+            setTimeout(() => $(this).removeClass('fa-spin'), 500);
+        });
+    });
+    
+    // Trader dropdown change
+    $('#trader-select').on('change', function() {
+        fetchPortfolioData();
+    });
+    
+    // Modals
+    setupTradeModal();
+}
+
+// Populate trader dropdown
+function populateTraderDropdown() {
+    $.ajax({
+        url: '/api/traders',
+        method: 'GET',
+        success: function(response) {
+            const select = $('#trader-select');
+            select.empty();
+            
+            response.traders.forEach(trader => {
+                select.append(
+                    $('<option>', {
+                        value: trader.id,
+                        text: trader.name
+                    })
+                );
+            });
+            
+            // Trigger change to load initial data
+            select.trigger('change');
+        },
+        error: function(error) {
+            console.error('Error fetching traders:', error);
+            showErrorMessage('Failed to load traders');
+        }
+    });
+}
+
+// Fetch portfolio data
+function fetchPortfolioData() {
+    const traderId = $('#trader-select').val();
+    
+    if (!traderId) return Promise.resolve();
+    
+    return $.ajax({
+        url: `/api/portfolio/${traderId}`,
+        method: 'GET',
+        beforeSend: function() {
+            $('#portfolio-loading').show();
+        },
+        success: function(data) {
+            updatePortfolioSummary(data.summary);
+            updatePortfolioTable(data.holdings);
+            updatePortfolioValueChart(data.history);
+            updateAssetAllocationChart(data.holdings);
+            $('#portfolio-loading').hide();
+        },
+        error: function(error) {
+            console.error('Error fetching portfolio data:', error);
+            showErrorMessage('Failed to load portfolio data');
+            $('#portfolio-loading').hide();
+        }
+    });
+}
+
+// Fetch price data
+function fetchPriceData() {
+    $.ajax({
+        url: '/api/prices',
+        method: 'GET',
+        success: function(data) {
+            updatePriceData(data);
+        },
+        error: function(error) {
+            console.error('Error fetching price data:', error);
+        }
+    });
+}
+
+// Update portfolio summary cards
+function updatePortfolioSummary(summary) {
+    $('#total-value').text('$' + summary.totalValue.toFixed(2));
+    $('#base-currency').text('$' + summary.baseCurrency.toFixed(2));
+    $('#assets-value').text('$' + summary.assetsValue.toFixed(2));
+    $('#asset-count').text(summary.assetCount);
+}
+
+// Update portfolio table
+function updatePortfolioTable(holdings) {
+    const tableBody = $('#portfolio-table tbody');
+    tableBody.empty();
+    
+    holdings.forEach(asset => {
+        const row = $('<tr>');
+        const priceChangeClass = asset.priceChange >= 0 ? 'price-up' : 'price-down';
+        const priceChangeIcon = asset.priceChange >= 0 ? 'fa-caret-up' : 'fa-caret-down';
+        
+        row.append(`<td><img src="/static/img/crypto/${asset.symbol.toLowerCase()}.png" width="24" class="me-2" onerror="this.src='/static/img/crypto/generic.png'">${asset.symbol}</td>`);
+        row.append(`<td>${asset.quantity.toFixed(8)}</td>`);
+        row.append(`<td>$${asset.price.toFixed(2)}</td>`);
+        row.append(`<td class="${priceChangeClass}"><i class="fas ${priceChangeIcon}"></i> ${Math.abs(asset.priceChange).toFixed(2)}%</td>`);
+        row.append(`<td>$${asset.value.toFixed(2)}</td>`);
+        row.append(`<td class="actions-col">
+            <button class="btn btn-sm btn-buy" data-symbol="${asset.symbol}" data-action="buy">Buy</button>
+            <button class="btn btn-sm btn-sell" data-symbol="${asset.symbol}" data-action="sell" ${asset.quantity <= 0 ? 'disabled' : ''}>Sell</button>
+        </td>`);
+        
+        tableBody.append(row);
+    });
+    
+    // Set up trade buttons
+    setupTradeButtons();
+}
+
+// Set up trade buttons
+function setupTradeButtons() {
+    $('.btn-buy, .btn-sell').off('click').on('click', function() {
+        const action = $(this).data('action');
+        const symbol = $(this).data('symbol');
+        showTradeModal(symbol, action);
+    });
+}
+
+// Update price data in the UI
+function updatePriceData(prices) {
+    // Update price data in portfolio table
+    prices.forEach(price => {
+        const priceCell = $(`#portfolio-table td:contains('${price.symbol}')`).siblings().eq(1);
+        if (priceCell.length) {
+            priceCell.text('$' + price.price.toFixed(2));
+        }
+    });
+}
+
+// Initialize portfolio value chart
+function initPortfolioValueChart() {
+    const ctx = document.getElementById('portfolio-value-chart').getContext('2d');
+    window.portfolioValueChart = new Chart(ctx, {
         type: 'line',
-        data: portfolioChartData,
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Portfolio Value',
+                data: [],
+                borderColor: '#4e73df',
+                backgroundColor: 'rgba(78, 115, 223, 0.1)',
+                tension: 0.1,
+                fill: true
+            }]
+        },
         options: {
+            responsive: true,
             maintainAspectRatio: false,
-            layout: {
-                padding: {
-                    left: 10,
-                    right: 25,
-                    top: 25,
-                    bottom: 0
-                }
-            },
             scales: {
-                x: {
-                    time: {
-                        unit: 'hour'
-                    },
-                    grid: {
-                        display: false,
-                        drawBorder: false
-                    },
-                    ticks: {
-                        maxTicksLimit: 7
-                    }
-                },
                 y: {
+                    beginAtZero: false,
                     ticks: {
-                        maxTicksLimit: 5,
-                        padding: 10,
                         callback: function(value) {
-                            return '$' + value.toFixed(2);
+                            return '$' + value;
                         }
-                    },
-                    grid: {
-                        color: "rgb(234, 236, 244)",
-                        zeroLineColor: "rgb(234, 236, 244)",
-                        drawBorder: false,
-                        borderDash: [2],
-                        zeroLineBorderDash: [2]
                     }
-                },
+                }
             },
             plugins: {
                 legend: {
                     display: false
                 },
                 tooltip: {
-                    backgroundColor: "rgb(255,255,255)",
-                    bodyColor: "#858796",
-                    titleMarginBottom: 10,
-                    titleColor: '#6e707e',
-                    titleFontSize: 14,
-                    borderColor: '#dddfeb',
-                    borderWidth: 1,
-                    xPadding: 15,
-                    yPadding: 15,
-                    displayColors: false,
-                    intersect: false,
-                    mode: 'index',
-                    caretPadding: 10,
                     callbacks: {
                         label: function(context) {
-                            return 'Portfolio Value: $' + context.parsed.y.toFixed(2);
+                            return '$' + context.parsed.y.toFixed(2);
                         }
                     }
                 }
@@ -120,420 +217,176 @@ function initPortfolioChart() {
     });
 }
 
-// Set up event listeners for the page
-function setupEventListeners() {
-    // Start system button
-    document.getElementById('start-system').addEventListener('click', function() {
-        startTradingSystem();
-    });
-    
-    // Stop system button
-    document.getElementById('stop-system').addEventListener('click', function() {
-        stopTradingSystem();
-    });
-    
-    // Socket.io event listeners
-    socket.on('portfolio_update', function(data) {
-        updatePortfolioData(data);
-    });
-    
-    socket.on('price_update', function(data) {
-        updatePriceData(data);
-    });
-    
-    socket.on('system_status', function(data) {
-        updateSystemStatus(data);
-    });
-    
-    // For demo mode: Buy form submission
-    const buyForm = document.getElementById('demo-buy-form');
-    if (buyForm) {
-        buyForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            executeDemoBuy();
-        });
-    }
-    
-    // For demo mode: Sell form submission
-    const sellForm = document.getElementById('demo-sell-form');
-    if (sellForm) {
-        sellForm.addEventListener('submit', function(e) {
-            e.preventDefault();
-            executeDemoSell();
-        });
-    }
-    
-    // Sell symbol change event to update balance display
-    const sellSymbol = document.getElementById('sell-symbol');
-    if (sellSymbol) {
-        sellSymbol.addEventListener('change', function() {
-            updateCurrentBalance();
-        });
-    }
+// Update portfolio value chart with new data
+function updatePortfolioValueChart(history) {
+    window.portfolioValueChart.data.labels = history.map(entry => entry.date);
+    window.portfolioValueChart.data.datasets[0].data = history.map(entry => entry.value);
+    window.portfolioValueChart.update();
 }
 
-// Update UI with default values before data starts coming in
-function updateUIWithDefaults() {
-    // Add 24 hours of empty data for the chart
-    const now = new Date();
-    for (let i = 24; i >= 0; i--) {
-        const time = new Date(now.getTime() - (i * 60 * 60 * 1000));
-        portfolioChartData.labels.push(formatTime(time));
-        portfolioChartData.datasets[0].data.push(null);
-    }
-    portfolioChart.update();
-    
-    // Fetch initial data from API
-    fetchInitialData();
-}
-
-// Format time for chart labels
-function formatTime(date) {
-    return date.getHours().toString().padStart(2, '0') + ':' + 
-           date.getMinutes().toString().padStart(2, '0');
-}
-
-// Fetch initial data from API endpoints
-function fetchInitialData() {
-    // Get portfolio data
-    fetch('/api/portfolio')
-        .then(response => response.json())
-        .then(data => {
-            updatePortfolioData(data);
-        })
-        .catch(error => console.error('Error fetching portfolio:', error));
-
-    // Get price data
-    fetch('/api/prices')
-        .then(response => response.json())
-        .then(data => {
-            updatePriceData(data);
-        })
-        .catch(error => console.error('Error fetching prices:', error));
-        
-    // Get system status
-    fetch('/api/system/status')
-        .then(response => response.json())
-        .then(data => {
-            updateSystemStatus(data);
-        })
-        .catch(error => console.error('Error fetching system status:', error));
-}
-
-// Update portfolio data in the UI
-function updatePortfolioData(data) {
-    // Add to portfolio history for calculating changes
-    portfolioHistory.push({
-        timestamp: new Date(data.timestamp),
-        value: data.total_value || 0
-    });
-    
-    // Limit history to last 24 hours
-    if (portfolioHistory.length > 144) { // 144 = 24 hours of 10 minute updates
-        portfolioHistory.shift();
-    }
-    
-    // Update portfolio value
-    const portfolioValue = document.getElementById('portfolio-value');
-    if (portfolioValue) {
-        portfolioValue.textContent = '$' + (data.total_value || 0).toFixed(2);
-    }
-    
-    // Update active positions count
-    const activePositions = document.getElementById('active-positions');
-    if (activePositions) {
-        let positionCount = 0;
-        if (data.holdings) {
-            positionCount = Object.keys(data.holdings).filter(key => key !== 'USDT').length;
-        }
-        activePositions.textContent = positionCount;
-    }
-    
-    // Update profit/loss
-    const profitLoss = document.getElementById('profit-loss');
-    if (profitLoss) {
-        // Calculate 24h change
-        let changeValue = 0;
-        let changePercent = 0;
-        
-        if (portfolioHistory.length > 1) {
-            const oldestValue = portfolioHistory[0].value;
-            const newestValue = portfolioHistory[portfolioHistory.length - 1].value;
-            
-            changeValue = newestValue - oldestValue;
-            if (oldestValue > 0) {
-                changePercent = (changeValue / oldestValue) * 100;
-            }
-            
-            const sign = changeValue >= 0 ? '+' : '';
-            profitLoss.textContent = sign + '$' + changeValue.toFixed(2) + ' (' + sign + changePercent.toFixed(2) + '%)';
-            
-            // Set color based on positive/negative
-            profitLoss.classList.remove('text-success', 'text-danger');
-            profitLoss.classList.add(changeValue >= 0 ? 'text-success' : 'text-danger');
-        }
-    }
-    
-    // Update holdings table
-    const holdingsTable = document.getElementById('holdings-table');
-    if (holdingsTable && data.holdings) {
-        let tableContent = '';
-        Object.keys(data.holdings).forEach(asset => {
-            if (asset !== 'USDT' && data.holdings[asset].value > 0) {
-                tableContent += `
-                    <tr>
-                        <td>${asset}</td>
-                        <td>${data.holdings[asset].amount.toFixed(6)}</td>
-                        <td>$${data.holdings[asset].value.toFixed(2)}</td>
-                    </tr>
-                `;
-            }
-        });
-        
-        // Add USDT balance
-        if (data.balances && data.balances.USDT) {
-            tableContent += `
-                <tr>
-                    <td>USDT</td>
-                    <td>${data.balances.USDT.toFixed(2)}</td>
-                    <td>$${data.balances.USDT.toFixed(2)}</td>
-                </tr>
-            `;
-        }
-        
-        holdingsTable.innerHTML = tableContent;
-    }
-    
-    // Update chart with new data point
-    if (data.timestamp && data.total_value) {
-        const time = new Date(data.timestamp);
-        
-        // Add new data point to chart
-        portfolioChartData.labels.push(formatTime(time));
-        portfolioChartData.datasets[0].data.push(data.total_value);
-        
-        // Remove oldest data point if we have more than 24 hours
-        if (portfolioChartData.labels.length > 144) {
-            portfolioChartData.labels.shift();
-            portfolioChartData.datasets[0].data.shift();
-        }
-        
-        // Update chart
-        portfolioChart.update();
-    }
-}
-
-// Update price data in the UI
-function updatePriceData(data) {
-    // Calculate price changes if we have previous data
-    Object.keys(data).forEach(symbol => {
-        const currentPrice = data[symbol];
-        
-        if (!priceChangeData[symbol]) {
-            // First data point, no change calculation possible
-            priceChangeData[symbol] = {
-                price: currentPrice,
-                lastPrice: currentPrice,
-                change24h: 0,
-                changePercent24h: 0
-            };
-        } else {
-            // Already have data, calculate change since last update
-            const lastPrice = priceChangeData[symbol].price;
-            const change = currentPrice - lastPrice;
-            const changePercent = (change / lastPrice) * 100;
-            
-            priceChangeData[symbol] = {
-                price: currentPrice,
-                lastPrice: lastPrice,
-                change24h: change,
-                changePercent24h: changePercent
-            };
-        }
-    });
-    
-    // Update price table
-    const priceTable = document.getElementById('price-table');
-    if (priceTable) {
-        let tableContent = '';
-        Object.keys(data).forEach(symbol => {
-            const price = data[symbol];
-            const change = priceChangeData[symbol].changePercent24h || 0;
-            const changeClass = change >= 0 ? 'text-success' : 'text-danger';
-            const changeSign = change >= 0 ? '+' : '';
-            
-            tableContent += `
-                <tr>
-                    <td>${symbol}</td>
-                    <td>$${price.toFixed(2)}</td>
-                    <td class="${changeClass}">${changeSign}${change.toFixed(2)}%</td>
-                </tr>
-            `;
-        });
-        priceTable.innerHTML = tableContent;
-    }
-    
-    // Update current balance in sell form
-    updateCurrentBalance();
-}
-
-// Update the current balance display in the sell form
-function updateCurrentBalance() {
-    const sellSymbol = document.getElementById('sell-symbol');
-    const currentBalance = document.getElementById('current-balance');
-    
-    if (sellSymbol && currentBalance) {
-        // Fetch portfolio data to get current balance
-        fetch('/api/portfolio')
-            .then(response => response.json())
-            .then(data => {
-                const symbol = sellSymbol.value;
-                let balance = 0;
-                
-                if (data.holdings && data.holdings[symbol]) {
-                    balance = data.holdings[symbol].amount;
-                }
-                
-                currentBalance.textContent = balance.toFixed(6);
-            })
-            .catch(error => console.error('Error fetching balance:', error));
-    }
-}
-
-// Update system status in the UI
-function updateSystemStatus(data) {
-    const statusIndicator = document.getElementById('status-indicator');
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (statusIndicator && startButton && stopButton) {
-        const isRunning = data.status === 'running';
-        
-        // Update status indicator
-        statusIndicator.textContent = isRunning ? 'Running' : 'Stopped';
-        statusIndicator.classList.remove('bg-success', 'bg-danger');
-        statusIndicator.classList.add(isRunning ? 'bg-success' : 'bg-danger');
-        
-        // Update buttons
-        startButton.disabled = isRunning;
-        stopButton.disabled = !isRunning;
-    }
-}
-
-// Connect system control buttons
-function connectSystemControls() {
-    const startButton = document.getElementById('start-system');
-    const stopButton = document.getElementById('stop-system');
-    
-    if (startButton) {
-        startButton.addEventListener('click', startTradingSystem);
-    }
-    
-    if (stopButton) {
-        stopButton.addEventListener('click', stopTradingSystem);
-    }
-}
-
-// Start the trading system
-function startTradingSystem() {
-    fetch('/api/system/start', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'started') {
-            updateSystemStatus({ status: 'running' });
-        }
-    })
-    .catch(error => console.error('Error starting system:', error));
-}
-
-// Stop the trading system
-function stopTradingSystem() {
-    fetch('/api/system/stop', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'stopped') {
-            updateSystemStatus({ status: 'stopped' });
-        }
-    })
-    .catch(error => console.error('Error stopping system:', error));
-}
-
-// Execute a demo buy order
-function executeDemoBuy() {
-    const symbol = document.getElementById('buy-symbol').value;
-    const amount = parseFloat(document.getElementById('buy-amount').value);
-    
-    fetch('/api/demo/buy', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
+// Initialize asset allocation chart
+function initAssetAllocationChart() {
+    const ctx = document.getElementById('asset-allocation-chart').getContext('2d');
+    window.assetAllocationChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [
+                    '#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b',
+                    '#5a5c69', '#858796', '#2ecc71', '#3498db', '#e67e22'
+                ]
+            }]
         },
-        body: JSON.stringify({
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            const value = context.parsed;
+                            const total = context.dataset.data.reduce((acc, val) => acc + val, 0);
+                            const percentage = ((value / total) * 100).toFixed(1);
+                            return `${context.label}: $${value.toFixed(2)} (${percentage}%)`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Update asset allocation chart with new data
+function updateAssetAllocationChart(holdings) {
+    const labels = [];
+    const data = [];
+    
+    holdings.forEach(asset => {
+        if (asset.value > 0) {
+            labels.push(asset.symbol);
+            data.push(asset.value);
+        }
+    });
+    
+    window.assetAllocationChart.data.labels = labels;
+    window.assetAllocationChart.data.datasets[0].data = data;
+    window.assetAllocationChart.update();
+}
+
+// Set up trade modal
+function setupTradeModal() {
+    // Trade form submission
+    $('#trade-form').on('submit', function(e) {
+        e.preventDefault();
+        executeTrade();
+    });
+}
+
+// Show trade modal
+function showTradeModal(symbol, action) {
+    const modal = $('#trade-modal');
+    const title = $('#trade-modal-title');
+    const actionInput = $('#trade-action');
+    const symbolInput = $('#trade-symbol');
+    const amountInput = $('#trade-amount');
+    const submitBtn = $('#trade-submit');
+    
+    // Set modal values
+    title.text(`${action.charAt(0).toUpperCase() + action.slice(1)} ${symbol}`);
+    actionInput.val(action);
+    symbolInput.val(symbol);
+    amountInput.val('').focus();
+    
+    // Set button styles based on action
+    submitBtn.removeClass('btn-success btn-danger')
+        .addClass(action === 'buy' ? 'btn-success' : 'btn-danger')
+        .text(action.charAt(0).toUpperCase() + action.slice(1));
+    
+    // Get current price
+    const currentPrice = parseFloat($(`#portfolio-table td:contains('${symbol}')`).siblings().eq(1).text().replace('$', ''));
+    $('#trade-price').text(`Current price: $${currentPrice.toFixed(2)}`);
+    
+    // Show the modal
+    modal.modal('show');
+}
+
+// Execute trade
+function executeTrade() {
+    const action = $('#trade-action').val();
+    const symbol = $('#trade-symbol').val();
+    const amount = parseFloat($('#trade-amount').val());
+    const traderId = $('#trader-select').val();
+    
+    // Validate amount (minimum $5)
+    if (isNaN(amount) || amount < 5) {
+        showErrorMessage('Minimum trade amount is $5');
+        return;
+    }
+    
+    // Disable submit button
+    const submitBtn = $('#trade-submit');
+    submitBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...');
+    
+    // Execute trade via API
+    $.ajax({
+        url: `/api/${action}`,
+        method: 'POST',
+        data: JSON.stringify({
+            trader_id: traderId,
             symbol: symbol,
             amount: amount
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Show success notification
-            alert(`Successfully bought ${data.quantity.toFixed(6)} ${data.symbol} for $${data.amount.toFixed(2)}`);
+        }),
+        contentType: 'application/json',
+        success: function(response) {
+            // Show success message
+            showSuccessMessage(`Successfully ${action === 'buy' ? 'bought' : 'sold'} ${symbol}`);
             
-            // Refresh data
-            fetchInitialData();
-        } else {
-            // Show error
-            alert(`Error: ${data.error}`);
+            // Close modal
+            $('#trade-modal').modal('hide');
+            
+            // Refresh portfolio data
+            fetchPortfolioData();
+        },
+        error: function(error) {
+            console.error(`Error ${action}ing ${symbol}:`, error);
+            showErrorMessage(error.responseJSON?.message || `Failed to ${action} ${symbol}`);
+        },
+        complete: function() {
+            // Re-enable submit button
+            submitBtn.prop('disabled', false).text(action.charAt(0).toUpperCase() + action.slice(1));
         }
-    })
-    .catch(error => console.error('Error executing buy:', error));
+    });
 }
 
-// Execute a demo sell order
-function executeDemoSell() {
-    const symbol = document.getElementById('sell-symbol').value;
-    const amountInput = document.getElementById('sell-amount');
+// Show success message
+function showSuccessMessage(message) {
+    const alertDiv = $('<div class="alert alert-success alert-dismissible fade show" role="alert">')
+        .text(message)
+        .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
     
-    // If amount is empty or 0, sell all
-    let quantity = amountInput.value ? parseFloat(amountInput.value) : 0;
+    $('#alert-container').append(alertDiv);
     
-    fetch('/api/demo/sell', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            symbol: symbol,
-            quantity: quantity
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            // Show success notification
-            alert(`Successfully sold ${data.quantity.toFixed(6)} ${data.symbol} for $${data.amount.toFixed(2)}`);
-            
-            // Refresh data
-            fetchInitialData();
-            
-            // Clear amount input
-            if (amountInput) {
-                amountInput.value = '';
-            }
-        } else {
-            // Show error
-            alert(`Error: ${data.error}`);
-        }
-    })
-    .catch(error => console.error('Error executing sell:', error));
+    // Auto dismiss after 3 seconds
+    setTimeout(() => {
+        alertDiv.alert('close');
+    }, 3000);
+}
+
+// Show error message
+function showErrorMessage(message) {
+    const alertDiv = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+        .text(message)
+        .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+    
+    $('#alert-container').append(alertDiv);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        alertDiv.alert('close');
+    }, 5000);
 } 
