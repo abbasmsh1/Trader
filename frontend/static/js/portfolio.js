@@ -160,67 +160,98 @@ function updatePerformanceMetrics() {
 }
 
 // Show trade modal
-function showTradeModal(type, symbol) {
-    const modal = document.getElementById('trade-modal');
-    const modalTitle = document.getElementById('trade-modal-title');
-    const tradeForm = document.getElementById('trade-form');
+function showTradeModal(traderId) {
+    const modal = new bootstrap.Modal(document.getElementById('trade-modal'));
     
-    // Update modal title
-    modalTitle.textContent = `${type.toUpperCase()} ${symbol}`;
+    // Store trader ID
+    $('#trade-trader-id').val(traderId);
     
-    // Update form
-    tradeForm.innerHTML = `
-        <div class="mb-3">
-            <label for="trade-amount" class="form-label">Amount (${type === 'buy' ? 'USDT' : symbol})</label>
-            <input type="number" class="form-control" id="trade-amount" min="5" step="0.000001" required>
-            <div class="form-text">Minimum trade amount: $5.00</div>
-        </div>
-        <div class="mb-3">
-            <label for="trade-price" class="form-label">Price (USDT)</label>
-            <input type="number" class="form-control" id="trade-price" readonly>
-        </div>
-        <div class="mb-3">
-            <label for="trade-value" class="form-label">Value (USDT)</label>
-            <input type="number" class="form-control" id="trade-value" readonly>
-        </div>
-        <button type="submit" class="btn btn-primary">Execute ${type.toUpperCase()}</button>
-    `;
+    // Set up symbol change handler
+    $('#trade-symbol').on('change', updateCurrentPrice);
     
-    // Show modal
-    const modalInstance = new bootstrap.Modal(modal);
-    modalInstance.show();
-    
-    // Set up form submission
-    tradeForm.onsubmit = function(e) {
-        e.preventDefault();
-        executeTrade(type, symbol);
-    };
+    // Set up action change handler
+    $('#trade-action').on('change', updateTradeForm);
     
     // Set up amount input handler
-    const amountInput = document.getElementById('trade-amount');
-    amountInput.oninput = function() {
-        updateTradePreview(type, symbol);
-    };
+    $('#trade-amount').on('input', updateTradeValue);
+    
+    // Initial update
+    updateCurrentPrice();
+    updateTradeForm();
+    
+    modal.show();
 }
 
-// Update trade preview
-function updateTradePreview(type, symbol) {
-    const amount = parseFloat(document.getElementById('trade-amount').value) || 0;
-    const price = getCurrentPrice(symbol);
-    const value = type === 'buy' ? amount : amount * price;
+// Update current price display
+async function updateCurrentPrice() {
+    const symbol = $('#trade-symbol').val();
+    try {
+        const response = await fetch('/api/prices');
+        const prices = await response.json();
+        
+        if (prices[symbol]) {
+            const priceData = prices[symbol];
+            const priceChange = priceData.change_24h;
+            const changeClass = priceChange >= 0 ? 'text-success' : 'text-danger';
+            const changeIcon = priceChange >= 0 ? 'arrow-up' : 'arrow-down';
+            
+            $('#trade-price').html(`
+                <div class="price-info">
+                    <div class="current">Current Price: $${priceData.price.toFixed(2)}</div>
+                    <div class="change ${changeClass}">
+                        <i class="fas fa-${changeIcon}"></i> ${Math.abs(priceChange).toFixed(2)}%
+                    </div>
+                    <div class="range">24h Range: $${priceData.low_24h.toFixed(2)} - $${priceData.high_24h.toFixed(2)}</div>
+                    <div class="volume">Volume: $${formatNumber(priceData.volume)}</div>
+                </div>
+            `);
+        } else {
+            $('#trade-price').html('<div class="text-danger">Price data not available</div>');
+        }
+    } catch (error) {
+        console.error('Error fetching price:', error);
+        $('#trade-price').html('<div class="text-danger">Error fetching price data</div>');
+    }
+}
+
+// Update trade form based on action
+function updateTradeForm() {
+    const action = $('#trade-action').val();
+    const amountLabel = action === 'buy' ? 'Amount (USDT)' : 'Amount (Crypto)';
+    $('#trade-amount').prev('label').text(amountLabel);
+}
+
+// Update trade value calculation
+function updateTradeValue() {
+    const amount = parseFloat($('#trade-amount').val()) || 0;
+    const symbol = $('#trade-symbol').val();
+    const action = $('#trade-action').val();
     
-    document.getElementById('trade-price').value = price.toFixed(2);
-    document.getElementById('trade-value').value = value.toFixed(2);
+    try {
+        const priceText = $('#trade-price .current').text();
+        const price = parseFloat(priceText.match(/\$([0-9.]+)/)[1]);
+        
+        const value = action === 'buy' ? amount : amount * price;
+        const otherAmount = action === 'buy' ? amount / price : amount * price;
+        
+        const valueText = `Total Value: $${value.toFixed(2)}`;
+        const otherAmountText = `${action === 'buy' ? 'You will receive' : 'You will pay'}: ${otherAmount.toFixed(8)} ${symbol.split('/')[0]}`;
+        
+        $('#trade-amount').next('.form-text').html(`${valueText}<br>${otherAmountText}`);
+    } catch (error) {
+        console.error('Error calculating trade value:', error);
+    }
 }
 
 // Execute trade
-async function executeTrade(type, symbol) {
-    const amount = parseFloat(document.getElementById('trade-amount').value);
-    const value = parseFloat(document.getElementById('trade-value').value);
+async function executeTrade() {
+    const traderId = $('#trade-trader-id').val();
+    const action = $('#trade-action').val();
+    const symbol = $('#trade-symbol').val();
+    const amount = parseFloat($('#trade-amount').val());
     
-    // Validate minimum trade amount
-    if (value < 5) {
-        showError('Minimum trade amount is $5.00');
+    if (!amount || amount < 5) {
+        showErrorMessage('Minimum trade amount is $5.00');
         return;
     }
     
@@ -228,37 +259,43 @@ async function executeTrade(type, symbol) {
         const response = await fetch('/api/trade', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                agent_id: currentAgentId,
-                type: type,
+                trader_id: traderId,
+                action: action,
                 symbol: symbol,
-                amount: amount,
-                value: value
-            })
+                amount: amount
+            }),
         });
         
-        if (!response.ok) {
-            throw new Error('Trade execution failed');
-        }
-        
         const result = await response.json();
+        
         if (result.success) {
-            showSuccess(`Trade executed successfully: ${type.toUpperCase()} ${amount} ${symbol}`);
-            // Refresh data
-            loadPortfolioData();
-            loadTradeHistory();
-            loadPerformanceMetrics();
-            // Close modal
+            showSuccessMessage(result.message);
             bootstrap.Modal.getInstance(document.getElementById('trade-modal')).hide();
+            loadTraderPortfolios(); // Refresh portfolios
         } else {
-            showError(result.message || 'Trade execution failed');
+            showErrorMessage(result.message || 'Trade failed');
         }
     } catch (error) {
         console.error('Error executing trade:', error);
-        showError('Failed to execute trade');
+        showErrorMessage('Failed to execute trade');
     }
+}
+
+// Format large numbers
+function formatNumber(num) {
+    if (num >= 1e9) {
+        return (num / 1e9).toFixed(2) + 'B';
+    }
+    if (num >= 1e6) {
+        return (num / 1e6).toFixed(2) + 'M';
+    }
+    if (num >= 1e3) {
+        return (num / 1e3).toFixed(2) + 'K';
+    }
+    return num.toFixed(2);
 }
 
 // Utility functions
@@ -266,13 +303,6 @@ function formatCurrency(value) {
     return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD'
-    }).format(value);
-}
-
-function formatNumber(value) {
-    return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 8
     }).format(value);
 }
 
@@ -302,4 +332,119 @@ function getCurrentPrice(symbol) {
     // Get current price from portfolio data
     const holding = portfolioData.portfolio.holdings.find(h => h.symbol === symbol);
     return holding ? holding.price : 0;
+}
+
+// Portfolio JavaScript
+
+// Document ready handler
+$(document).ready(function() {
+    loadTraderPortfolios();
+    setupEventListeners();
+});
+
+// Set up event listeners
+function setupEventListeners() {
+    // Trade modal form submission
+    $('#trade-form').on('submit', function(e) {
+        e.preventDefault();
+        executeTrade();
+    });
+}
+
+// Load trader portfolios
+async function loadTraderPortfolios() {
+    try {
+        // First get the list of traders
+        const tradersResponse = await fetch('/api/traders');
+        if (!tradersResponse.ok) throw new Error('Failed to fetch traders');
+        
+        const tradersData = await tradersResponse.json();
+        
+        const portfolioGrid = document.getElementById('portfolioGrid');
+        portfolioGrid.innerHTML = '';
+        
+        // Load portfolio for each trader
+        for (const trader of tradersData.traders) {
+            try {
+                const portfolioResponse = await fetch(`/api/portfolio/${trader.id}`);
+                if (!portfolioResponse.ok) {
+                    console.warn(`No portfolio found for trader ${trader.id}`);
+                    continue;
+                }
+                
+                const portfolio = await portfolioResponse.json();
+                
+                const portfolioCard = document.createElement('div');
+                portfolioCard.className = 'portfolio-card';
+                
+                // Calculate total value and performance
+                const totalValue = portfolio.total_value || 0;
+                const initialValue = 20.00; // Initial investment
+                const performancePercent = ((totalValue - initialValue) / initialValue * 100).toFixed(2);
+                const performanceClass = performancePercent >= 0 ? 'positive' : 'negative';
+                
+                // Create holdings list with performance indicators
+                const holdingsList = portfolio.holdings.map(holding => `
+                    <div class="holding-item">
+                        <span class="holding-symbol">${holding.symbol}</span>
+                        <span class="holding-value">$${holding.value.toFixed(2)}</span>
+                    </div>
+                `).join('');
+                
+                portfolioCard.innerHTML = `
+                    <div class="card-header">
+                        <h3>${trader.name}</h3>
+                        <span class="trader-style">${trader.style}</span>
+                    </div>
+                    <div class="card-description">
+                        ${trader.description}
+                    </div>
+                    <div class="portfolio-stats">
+                        <div class="portfolio-value">$${totalValue.toFixed(2)}</div>
+                        <div class="performance ${performanceClass}">
+                            <i class="fas fa-${performancePercent >= 0 ? 'arrow-up' : 'arrow-down'}"></i>
+                            ${Math.abs(performancePercent)}%
+                        </div>
+                    </div>
+                    <div class="holdings">
+                        ${holdingsList}
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn-trade" onclick="showTradeModal('${trader.id}')">
+                            <i class="fas fa-exchange-alt"></i> Trade
+                        </button>
+                    </div>
+                `;
+                
+                portfolioGrid.appendChild(portfolioCard);
+            } catch (error) {
+                console.error(`Error loading portfolio for ${trader.id}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading trader portfolios:', error);
+        showErrorMessage('Failed to load trader portfolios');
+    }
+}
+
+// Show success message
+function showSuccessMessage(message) {
+    const alertContainer = document.getElementById('alert-container');
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success';
+    alert.textContent = message;
+    alertContainer.appendChild(alert);
+    
+    setTimeout(() => alert.remove(), 5000);
+}
+
+// Show error message
+function showErrorMessage(message) {
+    const alertContainer = document.getElementById('alert-container');
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-danger';
+    alert.textContent = message;
+    alertContainer.appendChild(alert);
+    
+    setTimeout(() => alert.remove(), 5000);
 } 

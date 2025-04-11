@@ -11,6 +11,9 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 import uuid
+from decimal import Decimal
+
+logger = logging.getLogger('wallet')
 
 class Wallet:
     """
@@ -23,42 +26,142 @@ class Wallet:
     - Generate performance reports
     """
     
-    def __init__(self, 
-                 initial_balance: float = 20.0, 
-                 base_currency: str = "USDT",
-                 name: str = "Main Trading Wallet"):
+    def __init__(self, trader_id: str, initial_balance: Optional[Dict[str, Decimal]] = None):
         """
-        Initialize a new wallet.
+        Initialize a wallet for a trader.
         
         Args:
-            initial_balance: Initial balance in base currency (default: 20.0 USDT)
-            base_currency: Base currency symbol (default: USDT)
-            name: Wallet name for identification
+            trader_id: Unique identifier for the trader
+            initial_balance: Optional dictionary of currency:amount pairs
         """
-        self.name = name
-        self.base_currency = base_currency
-        self.initial_balance = initial_balance  # Store initial balance as instance attribute
-        self.creation_time = datetime.now()
-        self.last_modified = self.creation_time
-        self.wallet_id = str(uuid.uuid4())
+        self.trader_id = trader_id
+        self.balances = initial_balance or {'USDT': Decimal('10000.0')}  # Default 10k USDT
+        self.logger = logging.getLogger(f'wallet.{trader_id}')
+        self.logger.info(f"Wallet initialized for trader {trader_id}")
+    
+    def get_balance(self, currency: str) -> Decimal:
+        """Get balance for a specific currency."""
+        return self.balances.get(currency, Decimal('0'))
+    
+    def get_all_balances(self) -> Dict[str, Decimal]:
+        """Get all balances."""
+        return self.balances.copy()
+    
+    def deposit(self, currency: str, amount: Decimal) -> bool:
+        """
+        Deposit funds into the wallet.
         
-        # Holdings structure
-        self.balances = {
-            base_currency: initial_balance
+        Args:
+            currency: Currency symbol
+            amount: Amount to deposit
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            if amount <= 0:
+                raise ValueError("Deposit amount must be positive")
+            
+            current_balance = self.balances.get(currency, Decimal('0'))
+            self.balances[currency] = current_balance + amount
+            
+            self.logger.info(f"Deposited {amount} {currency}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error depositing funds: {str(e)}")
+            return False
+    
+    def withdraw(self, currency: str, amount: Decimal) -> bool:
+        """
+        Withdraw funds from the wallet.
+        
+        Args:
+            currency: Currency symbol
+            amount: Amount to withdraw
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            if amount <= 0:
+                raise ValueError("Withdrawal amount must be positive")
+            
+            current_balance = self.balances.get(currency, Decimal('0'))
+            if current_balance < amount:
+                raise ValueError(f"Insufficient {currency} balance")
+            
+            self.balances[currency] = current_balance - amount
+            
+            self.logger.info(f"Withdrew {amount} {currency}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error withdrawing funds: {str(e)}")
+            return False
+    
+    def has_sufficient_balance(self, currency: str, amount: Decimal) -> bool:
+        """Check if wallet has sufficient balance for a transaction."""
+        return self.get_balance(currency) >= amount
+    
+    def execute_trade(self, base_currency: str, quote_currency: str,
+                     amount: Decimal, price: Decimal, is_buy: bool) -> bool:
+        """
+        Execute a trade by updating wallet balances.
+        
+        Args:
+            base_currency: Base currency (e.g., 'BTC')
+            quote_currency: Quote currency (e.g., 'USDT')
+            amount: Amount in base currency
+            price: Price in quote currency
+            is_buy: True for buy, False for sell
+            
+        Returns:
+            bool: True if successful
+        """
+        try:
+            total_value = amount * price
+            
+            if is_buy:
+                # Check quote currency balance
+                if not self.has_sufficient_balance(quote_currency, total_value):
+                    raise ValueError(f"Insufficient {quote_currency} balance")
+                
+                # Update balances
+                self.withdraw(quote_currency, total_value)
+                self.deposit(base_currency, amount)
+                
+            else:  # sell
+                # Check base currency balance
+                if not self.has_sufficient_balance(base_currency, amount):
+                    raise ValueError(f"Insufficient {base_currency} balance")
+                
+                # Update balances
+                self.withdraw(base_currency, amount)
+                self.deposit(quote_currency, total_value)
+            
+            self.logger.info(
+                f"Trade executed: {'Bought' if is_buy else 'Sold'} {amount} {base_currency} "
+                f"at {price} {quote_currency}"
+            )
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error executing trade: {str(e)}")
+            return False
+    
+    def to_dict(self) -> dict:
+        """Convert wallet to dictionary for storage."""
+        return {
+            'trader_id': self.trader_id,
+            'balances': {k: str(v) for k, v in self.balances.items()}
         }
-        
-        # Trade history
-        self.trade_history = []
-        
-        # Performance tracking
-        self.performance_history = []
-        self.deposits_withdrawals = []
-        
-        # Last known prices for value calculation
-        self.last_prices = {}
-        
-        self.logger = logging.getLogger(f"wallet_{self.wallet_id[:8]}")
-        self.logger.info(f"Initialized wallet with {initial_balance} {base_currency}")
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> 'Wallet':
+        """Create wallet from dictionary."""
+        balances = {k: Decimal(v) for k, v in data['balances'].items()}
+        return cls(data['trader_id'], balances)
     
     def get_total_value(self, price_data: Optional[Dict[str, float]] = None) -> float:
         """
@@ -98,140 +201,6 @@ class Wallet:
                 self.logger.warning(f"No price data for {currency}, excluding from total value calculation")
         
         return total_value
-    
-    def get_balance(self, currency: str) -> float:
-        """
-        Get the balance of a specific currency.
-        
-        Args:
-            currency: Currency symbol (e.g., "BTC", "ETH", "USDT")
-            
-        Returns:
-            Float balance of the currency (0.0 if not held)
-        """
-        return self.balances.get(currency, 0.0)
-    
-    def get_all_balances(self) -> Dict[str, float]:
-        """
-        Get all currency balances.
-        
-        Returns:
-            Dictionary mapping currency symbols to balances
-        """
-        return self.balances.copy()
-    
-    def update_balance(self, currency: str, amount: float) -> bool:
-        """
-        Update balance of a specific currency.
-        
-        Args:
-            currency: Currency symbol
-            amount: Amount to add (positive) or subtract (negative)
-            
-        Returns:
-            Boolean indicating success
-            
-        Raises:
-            ValueError: If resulting balance would be negative
-        """
-        current_balance = self.get_balance(currency)
-        new_balance = current_balance + amount
-        
-        if new_balance < 0:
-            self.logger.error(f"Cannot update {currency} balance: insufficient funds")
-            raise ValueError(f"Insufficient funds: {current_balance} {currency} available, tried to subtract {abs(amount)}")
-        
-        self.balances[currency] = new_balance
-        self.last_modified = datetime.now()
-        self.logger.debug(f"Updated {currency} balance: {current_balance} -> {new_balance}")
-        
-        return True
-    
-    def add_trade(self, 
-                  trade_type: str, 
-                  from_currency: str, 
-                  to_currency: str,
-                  from_amount: float,
-                  to_amount: float,
-                  price: float,
-                  fee: float = 0.0,
-                  fee_currency: str = None,
-                  exchange: str = "unknown",
-                  external_id: str = None) -> Dict[str, Any]:
-        """
-        Record a trade and update balances accordingly.
-        
-        Args:
-            trade_type: Type of trade ("buy", "sell", "convert")
-            from_currency: Currency being spent
-            to_currency: Currency being received
-            from_amount: Amount of from_currency
-            to_amount: Amount of to_currency
-            price: Price per unit
-            fee: Trading fee
-            fee_currency: Currency of fee (defaults to from_currency)
-            exchange: Exchange where trade was executed
-            external_id: Exchange-provided trade ID
-            
-        Returns:
-            Dictionary with trade details including internal ID
-            
-        Raises:
-            ValueError: If insufficient funds for the trade
-        """
-        if fee_currency is None:
-            fee_currency = from_currency
-            
-        # Verify sufficient balance for both the trade and fee
-        if self.get_balance(from_currency) < from_amount:
-            raise ValueError(f"Insufficient {from_currency} for trade")
-            
-        if fee > 0 and fee_currency == from_currency:
-            if self.get_balance(from_currency) < from_amount + fee:
-                raise ValueError(f"Insufficient {from_currency} for trade + fee")
-        elif fee > 0 and self.get_balance(fee_currency) < fee:
-            raise ValueError(f"Insufficient {fee_currency} for fee")
-        
-        # Generate trade record
-        trade_id = str(uuid.uuid4())
-        timestamp = datetime.now()
-        
-        trade = {
-            "id": trade_id,
-            "timestamp": timestamp.isoformat(),
-            "type": trade_type,
-            "from_currency": from_currency,
-            "to_currency": to_currency,
-            "from_amount": from_amount,
-            "to_amount": to_amount,
-            "price": price,
-            "fee": fee,
-            "fee_currency": fee_currency,
-            "exchange": exchange,
-            "external_id": external_id
-        }
-        
-        # Update balances
-        self.update_balance(from_currency, -from_amount)
-        self.update_balance(to_currency, to_amount)
-        
-        # Handle fee
-        if fee > 0:
-            self.update_balance(fee_currency, -fee)
-        
-        # Add to history
-        self.trade_history.append(trade)
-        self.last_modified = timestamp
-        
-        self.logger.info(f"Recorded trade: {trade_type} {from_amount} {from_currency} -> {to_amount} {to_currency}")
-        
-        # Update last known price
-        if trade_type == "buy":
-            self.last_prices[to_currency] = price
-        elif trade_type == "sell":
-            self.last_prices[from_currency] = price
-        
-        return trade
     
     def get_trade_history(self, 
                           start_time: Optional[datetime] = None,

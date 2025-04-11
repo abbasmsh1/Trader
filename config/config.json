@@ -178,9 +178,7 @@
       "analysis_interval": 3600
     },
     "market_data_service": {
-      "enabled": true,
-      "api_key": "YOUR_API_KEY",
-      "secret": "YOUR_API_SECRET"
+      "enabled": true
     },
     "execution_agent": {
       "enabled": true,

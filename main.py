@@ -13,6 +13,11 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import time
 import random
+import requests
+import hmac
+import hashlib
+from dotenv import load_dotenv
+from decimal import Decimal
 
 # Configure logging
 logging.basicConfig(
@@ -23,6 +28,7 @@ logger = logging.getLogger('crypto_trader')
 
 # Import the database handler
 from db.db_handler import DummyDBHandler, PickleDBHandler
+from models.wallet import Wallet
 
 class CryptoTraderApp:
     """Main application class for the Crypto Trader system."""
@@ -33,6 +39,9 @@ class CryptoTraderApp:
         self.testnet = testnet
         self.config_path = config_path
         self.demo_mode = demo_mode
+        
+        # Load environment variables
+        load_dotenv()
         
         # Load configuration
         self.config = self._load_config(config_path)
@@ -194,140 +203,220 @@ class CryptoTraderApp:
             logger.warning(f"Could not import agents: {str(e)}")
             logger.info("Running in demo mode with simulated agents")
     
+    def _initialize_wallets(self):
+        """Initialize wallets for all traders."""
+        try:
+            # Get list of traders
+            traders = self.db_handler.get_traders()
+            
+            # Create system wallet first
+            self.system_wallet = Wallet(trader_id="system")
+            self.db_handler.save_wallet(self.system_wallet.to_dict())
+            
+            # Create wallet for each trader
+            for trader in traders:
+                wallet = Wallet(trader_id=trader['id'])
+                self.db_handler.save_wallet(wallet.to_dict())
+            
+            logger.info("Wallets initialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error initializing wallets: {str(e)}")
+            return False
+    
+    def _load_wallets(self):
+        """Load existing wallets from database."""
+        try:
+            # Get all wallet data
+            wallet_data = self.db_handler.get_wallets()
+            
+            # Create Wallet instances
+            self.wallets = {}
+            for data in wallet_data:
+                wallet = Wallet.from_dict(data)
+                self.wallets[wallet.trader_id] = wallet
+                
+                # Set system wallet reference if found
+                if wallet.trader_id == "system":
+                    self.system_wallet = wallet
+            
+            logger.info(f"Loaded {len(self.wallets)} wallets")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error loading wallets: {str(e)}")
+            return False
+    
+    def _initialize_trading_system(self):
+        """Initialize the trading system."""
+        try:
+            # 1. Initialize wallets if not exists
+            if not self._load_wallets():
+                if not self._initialize_wallets():
+                    raise Exception("Failed to initialize wallets")
+            
+            # 2. Initialize other components
+            self._initialize_trading_service()
+            self._initialize_performance_tracker()
+            
+            logger.info("Trading system initialized successfully")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error initializing trading system: {str(e)}")
+            return False
+    
     def initialize(self):
         """Initialize the trading system."""
         logger.info("Initializing Crypto Trader system")
         
-        if self.demo_mode:
-            logger.info("Using simulated market data (demo mode)")
-            
-            # Create placeholder agents for demo mode
-            # This would be replaced with actual agent creation in a real system
-            self.agents = {
-                "system_controller": {
-                    "id": "system_controller_1",
-                    "name": "System Controller",
-                    "type": "system_controller",
-                    "status": "active"
-                }
-            }
-            
-            return True
-        
-        # In a real system, we would:
-        # 1. Create agent instances based on configuration
-        # 2. Set up the system controller
-        # 3. Activate all agents
-        
-        logger.warning("Full system initialization not implemented yet")
-        return True
-    
-    def start(self, run_once=False):
-        """Start the trading system."""
-        if self.running:
-            logger.warning("Trading system already running")
-            return False
-        
-        logger.info("Starting Crypto Trader system")
-        self.running = True
-        self.start_time = datetime.now()
-        
         try:
-            # Run either a single cycle or continuous operation
-            if run_once:
-                self._run_cycle()
-            else:
-                self._run_continuous()
-                
+            # 1. Initialize wallets
+            if not self._load_wallets():
+                if not self._initialize_wallets():
+                    raise Exception("Failed to initialize wallets")
+                if not self._load_wallets():  # Load the newly initialized wallets
+                    raise Exception("Failed to load initialized wallets")
+            
+            # 2. Create and initialize agents
+            self._initialize_agents()
+            
+            # 3. Set up market data service
+            self._setup_market_data_service()
+            
+            # 4. Initialize performance tracking
+            self._initialize_performance_tracking()
+            
+            # 5. Load historical data
+            self._load_historical_data()
+            
+            # 6. Initialize trading service
+            self._initialize_trading_service()
+            
+            logger.info("Crypto Trader system initialized successfully")
             return True
             
-        except KeyboardInterrupt:
-            logger.info("Received shutdown signal")
-            return self.stop()
-            
         except Exception as e:
-            logger.error(f"Error starting trading system: {str(e)}")
-            self.stop()
+            logger.error(f"Error initializing trading system: {str(e)}")
             return False
     
-    def _run_cycle(self):
-        """Run a single trading cycle."""
-        logger.info("Running trading cycle")
-        self.last_update_time = datetime.now()
-        
+    def _initialize_agents(self):
+        """Create and initialize all agents."""
         try:
-            # 1. Fetch market data
-            market_data = self._fetch_market_data()
-            if not market_data:
-                logger.warning("No market data available, skipping cycle")
-                return
+            # 1. Create system controller
+            if self.config.get("agents", {}).get("system_controller", {}).get("enabled", False):
+                from agents.system_controller import SystemControllerAgent
+                self.system_controller = SystemControllerAgent(
+                    name="System Controller",
+                    description="Controls overall system operation",
+                    config=self.config,
+                    wallet=self.system_wallet
+                )
+                self.agents["system_controller"] = self.system_controller
             
-            # 2. Update system controller
-            if self.system_controller:
-                system_update = self.system_controller.process_update({
-                    "market_data": market_data,
-                    "agents": self.agents
-                })
-                if not system_update.get("continue_trading", True):
-                    logger.warning("System controller requested trading pause")
-                    return
+            # 2. Create market analyzers
+            for analyzer_config in self.config.get("agents", {}).get("market_analyzer", []):
+                if analyzer_config.get("enabled", False):
+                    from agents.market_analyzer import MarketAnalyzerAgent
+                    analyzer = MarketAnalyzerAgent(
+                        name=analyzer_config["name"],
+                        description="Analyzes market data",
+                        config=analyzer_config,
+                        wallet=self.system_wallet
+                    )
+                    self.agents[analyzer_config["name"]] = analyzer
             
-            # 3. Update all agents
-            agent_updates = {}
-            for agent_id, agent in self.agents.items():
-                if agent.get("status") == "active":
-                    try:
-                        update_result = agent["instance"].process_update({
-                            "market_data": market_data,
-                            "system_state": self.get_status()
-                        })
-                        agent_updates[agent_id] = update_result
-                    except Exception as e:
-                        logger.error(f"Error updating agent {agent_id}: {str(e)}")
+            # 3. Create trader agents
+            for trader_config in self.config.get("agents", {}).get("trader_agents", []):
+                if trader_config.get("enabled", False):
+                    # Import the appropriate trader class based on type
+                    trader_type = trader_config.get("type", "base_trader")
+                    trader_module = __import__(f"agents.trader.{trader_type}", fromlist=["TraderAgent"])
+                    TraderAgent = getattr(trader_module, "TraderAgent")
+                    
+                    # Create trader instance
+                    trader = TraderAgent(
+                        name=trader_config["name"],
+                        description=trader_config.get("description", ""),
+                        config=trader_config,
+                        wallet=self.trader_wallets[trader_config["name"]]
+                    )
+                    self.agents[trader_config["name"]] = trader
             
-            # 4. Execute any pending trades
-            self._execute_pending_trades(agent_updates)
+            # 4. Create execution agent
+            if self.config.get("agents", {}).get("execution_agent", {}).get("enabled", False):
+                from agents.execution_agent import ExecutionAgent
+                self.execution_agent = ExecutionAgent(
+                    name="Execution Agent",
+                    description="Executes trades in the market",
+                    config=self.config.get("agents", {}).get("execution_agent", {}),
+                    wallet=self.system_wallet
+                )
+                self.agents["execution_agent"] = self.execution_agent
             
-            # 5. Update performance metrics
-            self._update_performance_metrics()
-            
-            # 6. Save system state
-            self._save_system_state()
-            
-            logger.info("Trading cycle completed successfully")
+            logger.info("All agents initialized successfully")
             
         except Exception as e:
-            logger.error(f"Error in trading cycle: {str(e)}")
+            logger.error(f"Error initializing agents: {str(e)}")
             raise
     
-    def _fetch_market_data(self) -> Dict[str, Any]:
-        """Fetch market data for configured symbols."""
-        market_data = {}
-        
+    def _setup_market_data_service(self):
+        """Set up the market data service."""
         try:
-            # In demo mode, generate simulated data
-            if self.demo_mode:
-                for symbol in self.config.get("symbols", []):
-                    # Generate random price movements around a base price
-                    base_price = 50000.0 if "BTC" in symbol else 3000.0
-                    price = base_price * (1 + (random.random() - 0.5) * 0.02)  # ±2% movement
-                    volume = random.randint(100, 1000)
-                    
-                    market_data[symbol] = {
-                        "price": price,
-                        "volume": volume,
-                        "timestamp": datetime.now().isoformat()
-                    }
-            else:
-                # TODO: Implement real market data fetching
-                logger.warning("Real market data fetching not implemented yet")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error fetching market data: {str(e)}")
-            return None
+            from services.market_data import MarketDataService
+            self.market_data_service = MarketDataService(
+                config=self.config,
+                symbols=self.config.get("symbols", []),
+                testnet=self.testnet
+            )
+            logger.info("Market data service initialized successfully")
             
-        return market_data
+        except Exception as e:
+            logger.error(f"Error setting up market data service: {str(e)}")
+            raise
+    
+    def _initialize_performance_tracking(self):
+        """Initialize performance tracking system."""
+        try:
+            from services.performance import PerformanceTracker
+            self.performance_tracker = PerformanceTracker(
+                config=self.config,
+                agents=self.agents,
+                wallets=self.trader_wallets
+            )
+            logger.info("Performance tracking initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Error initializing performance tracking: {str(e)}")
+            raise
+    
+    def _load_historical_data(self):
+        """Load historical market data."""
+        try:
+            # Load historical data for each symbol
+            for symbol in self.config.get("symbols", []):
+                self.market_data_service.load_historical_data(symbol)
+            
+            logger.info("Historical data loaded successfully")
+            
+        except Exception as e:
+            logger.error(f"Error loading historical data: {str(e)}")
+            raise
+    
+    def _initialize_trading_service(self):
+        """Initialize the trading service."""
+        try:
+            from services.trading import TradingService
+            self.trading_service = TradingService(
+                trade_execution_service=self.trade_execution_service,
+                performance_tracker=self.performance_tracker,
+                db_handler=self.db_handler
+            )
+            logger.info("Trading service initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing trading service: {str(e)}")
+            raise
     
     def _execute_pending_trades(self, agent_updates: Dict[str, Any]) -> None:
         """Execute any pending trades from agent updates."""
@@ -335,8 +424,27 @@ class CryptoTraderApp:
             if "trades" in update:
                 for trade in update["trades"]:
                     try:
-                        # TODO: Implement trade execution
-                        logger.info(f"Would execute trade: {trade}")
+                        # Create trade signal
+                        from services.trading import TradeSignal
+                        signal = TradeSignal(
+                            trader_id=agent_id,
+                            symbol=trade["symbol"],
+                            side=trade["side"],
+                            order_type=trade["order_type"],
+                            amount=Decimal(str(trade["amount"])),
+                            price=Decimal(str(trade["price"])) if "price" in trade else None,
+                            stop_loss=Decimal(str(trade["stop_loss"])) if "stop_loss" in trade else None,
+                            take_profit=Decimal(str(trade["take_profit"])) if "take_profit" in trade else None
+                        )
+                        
+                        # Process the trade
+                        result = self.trading_service.process_trade_signal(signal)
+                        
+                        if result["success"]:
+                            logger.info(f"Trade executed successfully for {agent_id}: {result['trade_record']}")
+                        else:
+                            logger.error(f"Trade execution failed for {agent_id}: {result['error']}")
+                            
                     except Exception as e:
                         logger.error(f"Error executing trade for {agent_id}: {str(e)}")
     
@@ -353,7 +461,7 @@ class CryptoTraderApp:
                 "agents": self.agents,
                 "status": self.get_status()
             }
-            self.db_handler.save_state("system_state", state)
+            self.db_handler.save_agent_state("system_state", state)
         except Exception as e:
             logger.error(f"Error saving system state: {str(e)}")
     

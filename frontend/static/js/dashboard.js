@@ -389,4 +389,208 @@ function showErrorMessage(message) {
     setTimeout(() => {
         alertDiv.alert('close');
     }, 5000);
-} 
+}
+
+// Load market prices and create charts
+async function loadMarketPrices() {
+    try {
+        const response = await fetch('/api/prices');
+        if (!response.ok) throw new Error('Failed to fetch market prices');
+        
+        const data = await response.json();
+        
+        const marketPricesContainer = document.getElementById('marketPrices');
+        marketPricesContainer.innerHTML = '';
+        
+        for (const [symbol, price] of Object.entries(data)) {
+            const priceCard = document.createElement('div');
+            priceCard.className = 'price-card';
+            
+            const changeClass = price.change_24h >= 0 ? 'positive' : 'negative';
+            const changeSymbol = price.change_24h >= 0 ? '+' : '';
+            
+            // Create chart container
+            const chartContainer = document.createElement('div');
+            chartContainer.className = 'chart-container';
+            chartContainer.id = `chart-${symbol.replace('/', '')}`;
+            
+            priceCard.innerHTML = `
+                <div class="symbol">${symbol}</div>
+                <div class="price">$${price.price.toFixed(2)}</div>
+                <div class="change ${changeClass}">${changeSymbol}${price.change_24h.toFixed(2)}%</div>
+            `;
+            
+            priceCard.appendChild(chartContainer);
+            marketPricesContainer.appendChild(priceCard);
+            
+            // Load historical data and create chart
+            loadPriceChart(symbol, chartContainer.id);
+        }
+    } catch (error) {
+        console.error('Error loading market prices:', error);
+        showErrorMessage('Failed to load market prices');
+    }
+}
+
+// Load historical price data and create chart
+async function loadPriceChart(symbol, containerId) {
+    try {
+        // Convert symbol for URL (replace / with -)
+        const urlSymbol = symbol.replace('/', '-');
+        const response = await fetch(`/api/historical-prices/${urlSymbol}?interval=1h`);
+        if (!response.ok) throw new Error('Failed to fetch historical prices');
+        
+        const data = await response.json();
+        
+        // Create chart configuration
+        const chartConfig = {
+            type: 'line',
+            data: {
+                labels: data.map(d => new Date(d.timestamp).toLocaleTimeString()),
+                datasets: [{
+                    label: symbol,
+                    data: data.map(d => d.price),
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: document.body.classList.contains('dark-mode') ? '#fff' : '#2c3e50'
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: document.body.classList.contains('dark-mode') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            color: document.body.classList.contains('dark-mode') ? '#fff' : '#2c3e50'
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: document.body.classList.contains('dark-mode') ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)'
+                        },
+                        ticks: {
+                            color: document.body.classList.contains('dark-mode') ? '#fff' : '#2c3e50',
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        
+        const ctx = document.getElementById(containerId).getContext('2d');
+        new Chart(ctx, chartConfig);
+    } catch (error) {
+        console.error(`Error loading chart for ${symbol}:`, error);
+    }
+}
+
+// Load trader portfolios
+async function loadTraderPortfolios() {
+    try {
+        // First get the list of traders
+        const tradersResponse = await fetch('/api/traders');
+        if (!tradersResponse.ok) throw new Error('Failed to fetch traders');
+        
+        const tradersData = await tradersResponse.json();
+        
+        const portfolioGrid = document.getElementById('portfolioGrid');
+        portfolioGrid.innerHTML = '';
+        
+        // Load portfolio for each trader
+        for (const trader of tradersData.traders) {
+            try {
+                const portfolioResponse = await fetch(`/api/portfolio/${trader.id}`);
+                if (!portfolioResponse.ok) {
+                    console.warn(`No portfolio found for trader ${trader.id}`);
+                    continue;
+                }
+                
+                const portfolio = await portfolioResponse.json();
+                
+                const portfolioCard = document.createElement('div');
+                portfolioCard.className = 'portfolio-card';
+                
+                // Calculate total value and performance
+                const totalValue = portfolio.total_value || 0;
+                const initialValue = 20.00; // Initial investment
+                const performancePercent = ((totalValue - initialValue) / initialValue * 100).toFixed(2);
+                const performanceClass = performancePercent >= 0 ? 'positive' : 'negative';
+                
+                // Create holdings list with performance indicators
+                const holdingsList = portfolio.holdings.map(holding => `
+                    <div class="holding-item">
+                        <span class="holding-symbol">${holding.symbol}</span>
+                        <span class="holding-value">$${holding.value.toFixed(2)}</span>
+                    </div>
+                `).join('');
+                
+                portfolioCard.innerHTML = `
+                    <div class="card-header">
+                        <h3>${trader.name}</h3>
+                        <span class="trader-style">${trader.style}</span>
+                    </div>
+                    <div class="card-description">
+                        ${trader.description}
+                    </div>
+                    <div class="portfolio-stats">
+                        <div class="portfolio-value">$${totalValue.toFixed(2)}</div>
+                        <div class="performance ${performanceClass}">
+                            <i class="fas fa-${performancePercent >= 0 ? 'arrow-up' : 'arrow-down'}"></i>
+                            ${Math.abs(performancePercent)}%
+                        </div>
+                    </div>
+                    <div class="holdings">
+                        ${holdingsList}
+                    </div>
+                    <div class="card-footer">
+                        <button class="btn-trade" onclick="showTradeModal('${trader.id}')">
+                            <i class="fas fa-exchange-alt"></i> Trade
+                        </button>
+                    </div>
+                `;
+                
+                portfolioGrid.appendChild(portfolioCard);
+            } catch (error) {
+                console.error(`Error loading portfolio for ${trader.id}:`, error);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading trader portfolios:', error);
+        showErrorMessage('Failed to load trader portfolios');
+    }
+}
+
+// Create alert container if it doesn't exist
+function createAlertContainer() {
+    const container = document.createElement('div');
+    container.id = 'alertContainer';
+    document.body.appendChild(container);
+    return container;
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', () => {
+    loadMarketPrices();
+    loadTraderPortfolios();
+    
+    // Refresh data every 30 seconds
+    setInterval(() => {
+        loadMarketPrices();
+        loadTraderPortfolios();
+    }, 30000);
+}); 

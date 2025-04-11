@@ -314,14 +314,23 @@ class BaseTraderAgent(BaseAgent):
             else:
                 decisions[symbol] = "hold"
             
-            # Record the signal
-            self.last_signal = {
+            # Create signal data
+            signal_data = {
                 "symbol": symbol,
                 "timestamp": datetime.now().isoformat(),
                 "buy_signal": buy_signal,
                 "sell_signal": sell_signal,
-                "decision": decisions[symbol]
+                "decision": decisions[symbol],
+                "price": market_data[symbol].get("price", 0),
+                "strength": self._calculate_signal_strength(symbol, market_data),
+                "status": "active"
             }
+            
+            # Save signal to database
+            self.db.add_signal(self.id, signal_data)
+            
+            # Record the signal in agent's history
+            self.last_signal = signal_data
             self.signal_history.append(self.last_signal)
             
             # Trim signal history if too long
@@ -359,6 +368,20 @@ class BaseTraderAgent(BaseAgent):
         """
         # Base implementation - random decision with 5% probability
         return np.random.rand() < 0.05
+    
+    def _calculate_signal_strength(self, symbol: str, market_data: Dict[str, Any]) -> float:
+        """
+        Calculate the strength of the trading signal.
+        
+        Args:
+            symbol: Trading symbol
+            market_data: Market data dictionary
+            
+        Returns:
+            Signal strength between 0 and 1
+        """
+        # Base implementation - return random strength
+        return np.random.random()
     
     def _execute_decisions(self, decisions: Dict[str, str]) -> Dict[str, Any]:
         """

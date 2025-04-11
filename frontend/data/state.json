@@ -1,0 +1,85 @@
+{
+  "portfolios": {
+    "momentum": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "mean_reversion": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "breakout": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "grid": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "swing": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "scalper": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "arbitrage": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "ml_prediction": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "sentiment": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    },
+    "options": {
+      "total_value": 20.0,
+      "base_currency": "USDT",
+      "base_amount": 20.0,
+      "assets_value": 0.0,
+      "num_assets": 0,
+      "holdings": []
+    }
+  },
+  "last_update": "2025-04-11T17:03:54.096598"
+}

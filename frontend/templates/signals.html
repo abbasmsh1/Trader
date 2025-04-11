@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading System - Signals</title>
+    <!-- External CSS dependencies -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body class="dark-mode">
+    <div class="container">
+        <header>
+            <h1>Trading System</h1>
+            <nav>
+                <ul>
+                    <li><a href="/">Dashboard</a></li>
+                    <li><a href="/portfolio">Portfolio</a></li>
+                    <li><a href="/history">History</a></li>
+                    <li><a href="/signals" class="active">Signals</a></li>
+                </ul>
+            </nav>
+        </header>
+
+        <main>
+            <section class="signals-section">
+                <h2>Trading Signals</h2>
+                <div class="filters">
+                    <select id="trader-select" class="form-select">
+                        <option value="all">All Traders</option>
+                    </select>
+                    <select id="status-select" class="form-select">
+                        <option value="all">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <button id="refresh-btn" class="btn btn-primary">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                </div>
+                <div id="signals-grid" class="grid">
+                    <!-- Signals will be loaded here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- External JS dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="{{ url_for('static', filename='js/signals.js') }}"></script>
+</body>
+</html> 

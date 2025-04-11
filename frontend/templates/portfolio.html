@@ -3,188 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio - Trader</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <title>Trading System - Portfolios</title>
+    <!-- External CSS dependencies -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- Custom CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <div class="col-md-2 sidebar">
-                <div class="logo-container">
-                    <h3>Trader</h3>
-                </div>
-                <ul class="nav flex-column">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/dashboard">
-                            <i class="fas fa-tachometer-alt"></i> Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/portfolio">
-                            <i class="fas fa-chart-pie"></i> Portfolio
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/history">
-                            <i class="fas fa-history"></i> Trade History
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="/settings">
-                            <i class="fas fa-cog"></i> Settings
-                        </a>
-                    </li>
+<body class="dark-mode">
+    <div class="container">
+        <header>
+            <h1>Trading System</h1>
+            <nav>
+                <ul>
+                    <li><a href="/">Dashboard</a></li>
+                    <li><a href="/portfolio" class="active">Portfolio</a></li>
+                    <li><a href="/history">History</a></li>
+                    <li><a href="/settings">Settings</a></li>
                 </ul>
-            </div>
-            
-            <!-- Main Content -->
-            <div class="col-md-10 main-content">
-                <!-- Header -->
-                <div class="row header">
-                    <div class="col-6">
-                        <h2>Portfolio</h2>
-                    </div>
-                    <div class="col-6 text-end">
-                        <div class="d-inline-block me-3">
-                            <select id="trader-select" class="form-select">
-                                <!-- Traders will be populated dynamically -->
-                            </select>
-                        </div>
-                        <button class="btn btn-outline-secondary">
-                            <i class="fas fa-sync refresh-btn"></i>
+            </nav>
+        </header>
+
+        <main>
+            <section class="trader-portfolios">
+                <div class="section-header">
+                    <h2>Trader Portfolios</h2>
+                    <div class="section-actions">
+                        <button class="btn-refresh" onclick="refreshPortfolios()">
+                            <i class="fas fa-sync-alt"></i> Refresh
                         </button>
                     </div>
                 </div>
-                
-                <!-- Alert Container -->
-                <div id="alert-container"></div>
-                
-                <!-- Loading Indicator -->
-                <div id="portfolio-loading" class="text-center my-3" style="display: none;">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
+                <div class="portfolio-grid" id="portfolioGrid">
+                    <!-- Trader portfolio cards will be loaded here -->
                 </div>
-                
-                <!-- Portfolio Summary -->
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <h4>Portfolio Summary</h4>
-                    </div>
-                </div>
-                
-                <!-- Portfolio Summary Cards -->
-                <div class="row mt-2">
-                    <div class="col-md-3">
-                        <div class="card summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Total Value</h5>
-                                <h2 id="total-value" class="card-text">$0.00</h2>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Base Currency (USDT)</h5>
-                                <h2 id="base-currency" class="card-text">$0.00</h2>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Assets Value</h5>
-                                <h2 id="assets-value" class="card-text">$0.00</h2>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card summary-card">
-                            <div class="card-body">
-                                <h5 class="card-title">Number of Assets</h5>
-                                <h2 id="asset-count" class="card-text">0</h2>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Portfolio Holdings -->
-                <div class="row mt-4">
-                    <div class="col-12">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <h4>Portfolio Holdings</h4>
-                        </div>
-                        <div class="card">
-                            <div class="card-body">
-                                <div class="table-responsive">
-                                    <table id="portfolio-table" class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Asset</th>
-                                                <th>Quantity</th>
-                                                <th>Price</th>
-                                                <th>24h Change</th>
-                                                <th>Value</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <!-- Portfolio data will be populated dynamically -->
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+            </section>
+        </main>
     </div>
-    
+
     <!-- Trade Modal -->
-    <div class="modal fade" id="trade-modal" tabindex="-1" aria-labelledby="trade-modal-title" aria-hidden="true">
+    <div class="modal fade" id="trade-modal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="trade-modal-title">Trade Asset</h5>
+                    <h5 class="modal-title" id="trade-modal-title">Trade</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <div class="modal-body">
                     <form id="trade-form">
-                        <input type="hidden" id="trade-action" value="">
-                        <input type="hidden" id="trade-symbol" value="">
-                        
-                        <div class="mb-3" id="trade-price">
-                            Current price: $0.00
-                        </div>
-                        
+                        <input type="hidden" id="trade-trader-id">
                         <div class="mb-3">
-                            <label for="trade-amount" class="form-label">Amount (USD)</label>
+                            <label for="trade-action" class="form-label">Action</label>
+                            <select class="form-select" id="trade-action" required>
+                                <option value="buy">Buy</option>
+                                <option value="sell">Sell</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="trade-symbol" class="form-label">Trading Pair</label>
+                            <select class="form-select" id="trade-symbol" required>
+                                <option value="BTC/USDT">BTC/USDT - Bitcoin</option>
+                                <option value="ETH/USDT">ETH/USDT - Ethereum</option>
+                                <option value="BNB/USDT">BNB/USDT - Binance Coin</option>
+                                <option value="SOL/USDT">SOL/USDT - Solana</option>
+                                <option value="ADA/USDT">ADA/USDT - Cardano</option>
+                                <option value="XRP/USDT">XRP/USDT - Ripple</option>
+                                <option value="DOT/USDT">DOT/USDT - Polkadot</option>
+                                <option value="DOGE/USDT">DOGE/USDT - Dogecoin</option>
+                                <option value="AVAX/USDT">AVAX/USDT - Avalanche</option>
+                                <option value="MATIC/USDT">MATIC/USDT - Polygon</option>
+                                <option value="LINK/USDT">LINK/USDT - Chainlink</option>
+                                <option value="UNI/USDT">UNI/USDT - Uniswap</option>
+                                <option value="ATOM/USDT">ATOM/USDT - Cosmos</option>
+                                <option value="ALGO/USDT">ALGO/USDT - Algorand</option>
+                                <option value="FIL/USDT">FIL/USDT - Filecoin</option>
+                                <option value="NEAR/USDT">NEAR/USDT - NEAR Protocol</option>
+                                <option value="APE/USDT">APE/USDT - ApeCoin</option>
+                                <option value="LTC/USDT">LTC/USDT - Litecoin</option>
+                                <option value="BCH/USDT">BCH/USDT - Bitcoin Cash</option>
+                                <option value="AAVE/USDT">AAVE/USDT - Aave</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="trade-amount" class="form-label">Amount (USDT)</label>
                             <input type="number" class="form-control" id="trade-amount" min="5" step="0.01" required>
                             <div class="form-text">Minimum trade amount: $5.00</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="current-price" id="trade-price"></div>
                         </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" form="trade-form" class="btn" id="trade-submit">Execute</button>
+                    <button type="submit" class="btn btn-primary" id="trade-submit" form="trade-form">Trade</button>
                 </div>
             </div>
         </div>
     </div>
-    
-    <!-- jQuery -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Custom JS -->
-    <script src="/static/js/portfolio.js"></script>
+
+    <!-- Alert Container -->
+    <div id="alert-container"></div>
+
+    <!-- External JavaScript dependencies -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.3.0/chart.umd.min.js"></script>
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/portfolio.js') }}"></script>
 </body>
 </html> 
