@@ -9,8 +9,10 @@ import sys
 import json
 import logging
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
+import time
+import random
 
 # Configure logging
 logging.basicConfig(
@@ -253,25 +255,141 @@ class CryptoTraderApp:
         logger.info("Running trading cycle")
         self.last_update_time = datetime.now()
         
-        # In a real system, we would:
-        # 1. Fetch market data
-        # 2. Update all agents
-        # 3. Execute any pending trades
-        # 4. Update the frontend/UI
+        try:
+            # 1. Fetch market data
+            market_data = self._fetch_market_data()
+            if not market_data:
+                logger.warning("No market data available, skipping cycle")
+                return
+            
+            # 2. Update system controller
+            if self.system_controller:
+                system_update = self.system_controller.process_update({
+                    "market_data": market_data,
+                    "agents": self.agents
+                })
+                if not system_update.get("continue_trading", True):
+                    logger.warning("System controller requested trading pause")
+                    return
+            
+            # 3. Update all agents
+            agent_updates = {}
+            for agent_id, agent in self.agents.items():
+                if agent.get("status") == "active":
+                    try:
+                        update_result = agent["instance"].process_update({
+                            "market_data": market_data,
+                            "system_state": self.get_status()
+                        })
+                        agent_updates[agent_id] = update_result
+                    except Exception as e:
+                        logger.error(f"Error updating agent {agent_id}: {str(e)}")
+            
+            # 4. Execute any pending trades
+            self._execute_pending_trades(agent_updates)
+            
+            # 5. Update performance metrics
+            self._update_performance_metrics()
+            
+            # 6. Save system state
+            self._save_system_state()
+            
+            logger.info("Trading cycle completed successfully")
+            
+        except Exception as e:
+            logger.error(f"Error in trading cycle: {str(e)}")
+            raise
+    
+    def _fetch_market_data(self) -> Dict[str, Any]:
+        """Fetch market data for configured symbols."""
+        market_data = {}
         
-        if self.demo_mode:
-            # Simulate a trading cycle
-            logger.info("Simulated trading cycle completed")
+        try:
+            # In demo mode, generate simulated data
+            if self.demo_mode:
+                for symbol in self.config.get("symbols", []):
+                    # Generate random price movements around a base price
+                    base_price = 50000.0 if "BTC" in symbol else 3000.0
+                    price = base_price * (1 + (random.random() - 0.5) * 0.02)  # ±2% movement
+                    volume = random.randint(100, 1000)
+                    
+                    market_data[symbol] = {
+                        "price": price,
+                        "volume": volume,
+                        "timestamp": datetime.now().isoformat()
+                    }
+            else:
+                # TODO: Implement real market data fetching
+                logger.warning("Real market data fetching not implemented yet")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error fetching market data: {str(e)}")
+            return None
+            
+        return market_data
+    
+    def _execute_pending_trades(self, agent_updates: Dict[str, Any]) -> None:
+        """Execute any pending trades from agent updates."""
+        for agent_id, update in agent_updates.items():
+            if "trades" in update:
+                for trade in update["trades"]:
+                    try:
+                        # TODO: Implement trade execution
+                        logger.info(f"Would execute trade: {trade}")
+                    except Exception as e:
+                        logger.error(f"Error executing trade for {agent_id}: {str(e)}")
+    
+    def _update_performance_metrics(self) -> None:
+        """Update system performance metrics."""
+        # TODO: Implement performance metrics tracking
+        pass
+    
+    def _save_system_state(self) -> None:
+        """Save current system state."""
+        try:
+            state = {
+                "timestamp": datetime.now().isoformat(),
+                "agents": self.agents,
+                "status": self.get_status()
+            }
+            self.db_handler.save_state("system_state", state)
+        except Exception as e:
+            logger.error(f"Error saving system state: {str(e)}")
     
     def _run_continuous(self):
         """Run continuous trading operation."""
         logger.info("Starting continuous trading")
         
-        # This would implement a loop with proper timing control
-        # For now, just run one cycle
-        self._run_cycle()
+        # Get update interval from config
+        update_interval = self.config.get("update_interval", 60)  # Default to 60 seconds
         
-        logger.info("Continuous trading not fully implemented, ran one cycle")
+        while self.running:
+            try:
+                # Run a trading cycle
+                self._run_cycle()
+                
+                # Calculate time until next update
+                current_time = datetime.now()
+                next_update = self.last_update_time + timedelta(seconds=update_interval)
+                sleep_time = (next_update - current_time).total_seconds()
+                
+                # Sleep until next update, but check for shutdown every second
+                while sleep_time > 0 and self.running:
+                    time.sleep(min(1.0, sleep_time))
+                    sleep_time -= 1.0
+                
+            except KeyboardInterrupt:
+                logger.info("Received shutdown signal")
+                self.running = False
+                break
+                
+            except Exception as e:
+                logger.error(f"Error in trading cycle: {str(e)}")
+                # Sleep for a short time before retrying
+                time.sleep(5)
+        
+        logger.info("Continuous trading stopped")
     
     def stop(self):
         """Stop the trading system."""
