@@ -1,0 +1,2 @@
+[console_scripts]
+crypto-trader = main:main

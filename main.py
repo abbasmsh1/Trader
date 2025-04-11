@@ -94,6 +94,30 @@ class CryptoTraderApp:
                 "type": "pickle",
                 "path": "models"
             },
+            "exchange": {
+                "name": "binance",
+                "testnet": True,
+                "api_key": "",
+                "api_secret": ""
+            },
+            "wallets": {
+                "buffett_wallet": {
+                    "initial_balance": 10000.0,
+                    "currency": "USDT"
+                },
+                "soros_wallet": {
+                    "initial_balance": 10000.0,
+                    "currency": "USDT"
+                },
+                "simons_wallet": {
+                    "initial_balance": 10000.0,
+                    "currency": "USDT"
+                },
+                "lynch_wallet": {
+                    "initial_balance": 10000.0,
+                    "currency": "USDT"
+                }
+            },
             "agents": {
                 "system_controller": {
                     "name": "System Controller",
@@ -106,31 +130,35 @@ class CryptoTraderApp:
                 "trader_agents": [
                     {
                         "name": "Buffett Trader",
-                        "type": "buffett_trader",
+                        "type": "buffett",
                         "enabled": True,
                         "description": "Value investor focused on fundamentals",
-                        "trading_style": "value"
+                        "trading_style": "value",
+                        "wallet_id": "buffett_wallet"
                     },
                     {
                         "name": "Soros Trader",
-                        "type": "soros_trader",
+                        "type": "soros",
                         "enabled": True,
                         "description": "Macro investor focused on reflexivity",
-                        "trading_style": "macro"
+                        "trading_style": "macro",
+                        "wallet_id": "soros_wallet"
                     },
                     {
                         "name": "Simons Trader",
-                        "type": "simons_trader",
+                        "type": "simons",
                         "enabled": True,
                         "description": "Quantitative trader using statistical models",
-                        "trading_style": "quant"
+                        "trading_style": "quant",
+                        "wallet_id": "simons_wallet"
                     },
                     {
                         "name": "Lynch Trader",
-                        "type": "lynch_trader",
+                        "type": "lynch",
                         "enabled": True,
                         "description": "Growth investor looking for tenbaggers",
-                        "trading_style": "growth"
+                        "trading_style": "growth",
+                        "wallet_id": "lynch_wallet"
                     }
                 ]
             }
@@ -335,8 +363,8 @@ class CryptoTraderApp:
                 if trader_config.get("enabled", False):
                     # Import the appropriate trader class based on type
                     trader_type = trader_config.get("type", "base_trader")
-                    trader_module = __import__(f"agents.trader.{trader_type}", fromlist=["BuffettTraderAgent"])
-                    TraderAgent = getattr(trader_module, "BuffettTraderAgent")
+                    trader_module = __import__(f"agents.trader.{trader_type}_trader", fromlist=[f"{trader_type.title()}TraderAgent"])
+                    TraderAgent = getattr(trader_module, f"{trader_type.title()}TraderAgent")
                     
                     # Create trader instance
                     trader = TraderAgent(
@@ -382,9 +410,7 @@ class CryptoTraderApp:
         try:
             from services.performance import PerformanceTracker
             self.performance_tracker = PerformanceTracker(
-                config=self.config,
-                agents=self.agents,
-                wallets=self.trader_wallets
+                db_handler=self.db_handler
             )
             logger.info("Performance tracking initialized successfully")
             
@@ -408,6 +434,14 @@ class CryptoTraderApp:
     def _initialize_trading_service(self):
         """Initialize the trading service."""
         try:
+            # First create the trade execution service
+            from services.trade_execution import TradeExecutionService
+            self.trade_execution_service = TradeExecutionService(
+                config=self.config,
+                testnet=self.testnet
+            )
+            
+            # Then create the trading service
             from services.trading import TradingService
             self.trading_service = TradingService(
                 trade_execution_service=self.trade_execution_service,
@@ -538,10 +572,10 @@ def main():
     
     args = parser.parse_args()
     
-    # Create the trading system
+    # Create the trading system with testnet mode enabled
     trading_system = CryptoTraderApp(
         config_path=args.config,
-        testnet=args.testnet,
+        testnet=True,  # Force testnet mode
         demo_mode=args.demo if args.demo is not None else True
     )
     

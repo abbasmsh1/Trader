@@ -1,0 +1,37 @@
+Metadata-Version: 2.2
+Name: crypto_trader
+Version: 0.1.0
+Summary: Multi-Agent AI Trading System with Famous Trader Personas
+Author: CryptoTrader Team
+Author-email: info@cryptotrader.example
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Financial and Insurance Industry
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Office/Business :: Financial :: Investment
+Requires-Python: >=3.8
+Requires-Dist: numpy>=1.24.0
+Requires-Dist: pandas>=2.0.0
+Requires-Dist: torch>=2.0.0
+Requires-Dist: flask>=2.3.0
+Requires-Dist: flask-socketio>=5.3.0
+Requires-Dist: ccxt>=4.0.0
+Requires-Dist: matplotlib>=3.7.0
+Requires-Dist: seaborn>=0.12.0
+Requires-Dist: plotly>=5.15.0
+Requires-Dist: scikit-learn>=1.3.0
+Requires-Dist: dash>=2.13.0
+Requires-Dist: dash-bootstrap-components>=1.4.0
+Requires-Dist: tqdm>=4.65.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: PyYAML>=6.0.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary

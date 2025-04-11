@@ -132,21 +132,23 @@ class SystemControllerAgent(BaseAgent):
                         trader_class = None
                         try:
                             if trader_type == "base_trader":
+                                from agents.trader.base_trader import BaseTraderAgent
                                 trader_class = BaseTraderAgent
-                            elif trader_type == "buffett_trader":
+                            elif trader_type == "buffett":
+                                from agents.trader.buffett_trader import BuffettTraderAgent
                                 trader_class = BuffettTraderAgent
-                            elif trader_type == "soros_trader":
+                            elif trader_type == "soros":
                                 from agents.trader.soros_trader import SorosTraderAgent
                                 trader_class = SorosTraderAgent
-                            elif trader_type == "simons_trader":
+                            elif trader_type == "simons":
                                 from agents.trader.simons_trader import SimonsTraderAgent
                                 trader_class = SimonsTraderAgent
-                            elif trader_type == "lynch_trader":
+                            elif trader_type == "lynch":
                                 from agents.trader.lynch_trader import LynchTraderAgent
                                 trader_class = LynchTraderAgent
                             else:
                                 # Try to import specialized trader types
-                                module_name = f"agents.trader.{trader_type}"
+                                module_name = f"agents.trader.{trader_type}_trader"
                                 class_name = trader_type.split('_')[-1].title() + "TraderAgent"
                                 
                                 module = __import__(module_name, fromlist=[class_name])
@@ -155,12 +157,13 @@ class SystemControllerAgent(BaseAgent):
                         except (ImportError, AttributeError) as e:
                             self.logger.warning(f"Could not import trader class for {trader_type}: {str(e)}")
                             self.logger.info(f"Falling back to BaseTraderAgent for {trader_name}")
+                            from agents.trader.base_trader import BaseTraderAgent
                             trader_class = BaseTraderAgent
                         
-                        # Create trader agent
+                        # Create trader instance
                         trader = trader_class(
                             name=trader_name,
-                            description=trader_config.get("description", f"{trader_type} trading agent"),
+                            description=trader_config.get("description", ""),
                             config=trader_config,
                             parent_id=self.id
                         )

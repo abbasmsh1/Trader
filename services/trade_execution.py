@@ -20,10 +20,10 @@ class TradeExecutionService:
             config: Configuration dictionary
             testnet: Whether to use testnet (default: True)
         """
+        self.logger = logging.getLogger('trade_execution')
         self.config = config
         self.testnet = testnet
         self.exchange = self._setup_exchange()
-        self.logger = logging.getLogger('trade_execution')
         self.logger.info("Trade Execution Service initialized")
     
     def _setup_exchange(self) -> ccxt.Exchange:
