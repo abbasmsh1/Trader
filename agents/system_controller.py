@@ -8,6 +8,9 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from agents.base_agent import BaseAgent
+from agents.execution_agent import ExecutionAgent
+from agents.trader.base_trader import BaseTraderAgent
+from agents.trader.buffett_trader import BuffettTraderAgent
 from models.wallet import Wallet
 from utils.shared_memory import SharedMemory
 from agents.analyzer.historical_analyzer import HistoricalDataAnalyzerAgent
@@ -105,10 +108,6 @@ class SystemControllerAgent(BaseAgent):
                         parent_id=self.id
                     )
                     
-                    # Set wallet for execution agent
-                    if self.wallet:
-                        exec_agent.set_wallet(self.wallet)
-                    
                     # Add to children
                     self.add_child_agent(exec_agent)
                     self.register_agent(exec_agent.id, exec_agent)
@@ -134,6 +133,17 @@ class SystemControllerAgent(BaseAgent):
                         try:
                             if trader_type == "base_trader":
                                 trader_class = BaseTraderAgent
+                            elif trader_type == "buffett_trader":
+                                trader_class = BuffettTraderAgent
+                            elif trader_type == "soros_trader":
+                                from agents.trader.soros_trader import SorosTraderAgent
+                                trader_class = SorosTraderAgent
+                            elif trader_type == "simons_trader":
+                                from agents.trader.simons_trader import SimonsTraderAgent
+                                trader_class = SimonsTraderAgent
+                            elif trader_type == "lynch_trader":
+                                from agents.trader.lynch_trader import LynchTraderAgent
+                                trader_class = LynchTraderAgent
                             else:
                                 # Try to import specialized trader types
                                 module_name = f"agents.trader.{trader_type}"

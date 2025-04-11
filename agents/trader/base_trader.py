@@ -738,4 +738,150 @@ class BaseTraderAgent(BaseAgent):
         Returns:
             List of performance metrics records
         """
-        return self.db.get_performance_history(self.agent_id, limit) 
+        return self.db.get_performance_history(self.agent_id, limit)
+
+    def analyze_market(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze market data and generate insights.
+        To be overridden by subclasses.
+        
+        Args:
+            market_data: Dictionary containing market data
+            
+        Returns:
+            Analysis results
+        """
+        return {'error': 'analyze_market not implemented'}
+    
+    def generate_signals(self, analysis: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Generate trading signals based on analysis.
+        To be overridden by subclasses.
+        
+        Args:
+            analysis: Market analysis results
+            
+        Returns:
+            List of trading signals
+        """
+        return []
+    
+    def update_portfolio(self, trade_result: Dict[str, Any]) -> None:
+        """
+        Update portfolio after trade execution.
+        
+        Args:
+            trade_result: Trade execution result
+        """
+        if not trade_result['success']:
+            return
+        
+        symbol = trade_result['symbol']
+        amount = trade_result['amount']
+        price = trade_result['price']
+        side = trade_result['side']
+        
+        # Update cash balance
+        trade_value = amount * price
+        if side == 'buy':
+            self.cash_balance -= trade_value
+        else:
+            self.cash_balance += trade_value
+        
+        # Update positions
+        if side == 'buy':
+            if symbol not in self.positions:
+                self.positions[symbol] = {
+                    'amount': amount,
+                    'avg_price': price
+                }
+            else:
+                pos = self.positions[symbol]
+                total_amount = pos['amount'] + amount
+                total_value = (pos['amount'] * pos['avg_price']) + (amount * price)
+                pos['amount'] = total_amount
+                pos['avg_price'] = total_value / total_amount
+        else:
+            if symbol in self.positions:
+                pos = self.positions[symbol]
+                pos['amount'] -= amount
+                if pos['amount'] <= 0:
+                    del self.positions[symbol]
+        
+        # Update performance metrics
+        self._update_performance(trade_result)
+    
+    def _update_performance(self, trade_result: Dict[str, Any]) -> None:
+        """Update performance metrics after trade."""
+        self.total_trades += 1
+        
+        # Calculate profit/loss
+        if trade_result['side'] == 'sell' and 'entry_price' in trade_result:
+            pnl = (trade_result['price'] - trade_result['entry_price']) * trade_result['amount']
+            if pnl > 0:
+                self.winning_trades += 1
+                self.total_profit += pnl
+            else:
+                self.losing_trades += 1
+                self.total_loss -= pnl
+    
+    def get_portfolio_value(self) -> float:
+        """Calculate total portfolio value."""
+        total_value = self.cash_balance
+        
+        # Add value of open positions
+        for symbol, pos in self.positions.items():
+            # In a real implementation, we would use current market price
+            total_value += pos['amount'] * pos['avg_price']
+        
+        return total_value
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get current performance metrics."""
+        win_rate = self.winning_trades / self.total_trades if self.total_trades > 0 else 0
+        profit_factor = self.total_profit / self.total_loss if self.total_loss > 0 else float('inf')
+        
+        return {
+            'total_trades': self.total_trades,
+            'winning_trades': self.winning_trades,
+            'losing_trades': self.losing_trades,
+            'win_rate': win_rate,
+            'total_profit': self.total_profit,
+            'total_loss': self.total_loss,
+            'profit_factor': profit_factor,
+            'portfolio_value': self.get_portfolio_value(),
+            'cash_balance': self.cash_balance
+        }
+    
+    def check_risk_limits(self, signal: Dict[str, Any]) -> bool:
+        """
+        Check if a trade signal violates risk limits.
+        
+        Args:
+            signal: Trade signal to check
+            
+        Returns:
+            True if signal is within risk limits, False otherwise
+        """
+        symbol = signal['symbol']
+        side = signal['side']
+        amount = signal['amount']
+        price = signal['price']
+        
+        # Check position size limit
+        trade_value = amount * price
+        if trade_value > self.portfolio_value * self.max_position_size:
+            self.logger.warning(f"Trade value {trade_value} exceeds position size limit")
+            return False
+        
+        # Check cash balance for buys
+        if side == 'buy' and trade_value > self.cash_balance:
+            self.logger.warning(f"Insufficient cash balance for trade: {trade_value}")
+            return False
+        
+        # Check position exists for sells
+        if side == 'sell' and (symbol not in self.positions or self.positions[symbol]['amount'] < amount):
+            self.logger.warning(f"Insufficient position for sell: {symbol}")
+            return False
+        
+        return True 

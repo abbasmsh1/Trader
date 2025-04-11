@@ -27,7 +27,8 @@ logging.basicConfig(
 logger = logging.getLogger('crypto_trader')
 
 # Import the database handler
-from db.db_handler import DummyDBHandler, PickleDBHandler
+from db.pickle_db import PickleDBHandler
+from db.db_handler import DummyDBHandler
 from models.wallet import Wallet
 
 class CryptoTraderApp:
@@ -67,6 +68,10 @@ class CryptoTraderApp:
         # Initialize agents
         self.agents = {}
         self.system_controller = None
+        
+        # Initialize wallets
+        self.wallets = {}
+        self.system_wallet = None
         
         # Performance stats
         self.start_time = None
@@ -310,8 +315,7 @@ class CryptoTraderApp:
                 self.system_controller = SystemControllerAgent(
                     name="System Controller",
                     description="Controls overall system operation",
-                    config=self.config,
-                    wallet=self.system_wallet
+                    config=self.config
                 )
                 self.agents["system_controller"] = self.system_controller
             
@@ -322,8 +326,7 @@ class CryptoTraderApp:
                     analyzer = MarketAnalyzerAgent(
                         name=analyzer_config["name"],
                         description="Analyzes market data",
-                        config=analyzer_config,
-                        wallet=self.system_wallet
+                        config=analyzer_config
                     )
                     self.agents[analyzer_config["name"]] = analyzer
             
@@ -332,15 +335,14 @@ class CryptoTraderApp:
                 if trader_config.get("enabled", False):
                     # Import the appropriate trader class based on type
                     trader_type = trader_config.get("type", "base_trader")
-                    trader_module = __import__(f"agents.trader.{trader_type}", fromlist=["TraderAgent"])
-                    TraderAgent = getattr(trader_module, "TraderAgent")
+                    trader_module = __import__(f"agents.trader.{trader_type}", fromlist=["BuffettTraderAgent"])
+                    TraderAgent = getattr(trader_module, "BuffettTraderAgent")
                     
                     # Create trader instance
                     trader = TraderAgent(
                         name=trader_config["name"],
                         description=trader_config.get("description", ""),
-                        config=trader_config,
-                        wallet=self.trader_wallets[trader_config["name"]]
+                        config=trader_config
                     )
                     self.agents[trader_config["name"]] = trader
             
@@ -350,8 +352,7 @@ class CryptoTraderApp:
                 self.execution_agent = ExecutionAgent(
                     name="Execution Agent",
                     description="Executes trades in the market",
-                    config=self.config.get("agents", {}).get("execution_agent", {}),
-                    wallet=self.system_wallet
+                    config=self.config.get("agents", {}).get("execution_agent", {})
                 )
                 self.agents["execution_agent"] = self.execution_agent
             

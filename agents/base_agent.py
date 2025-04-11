@@ -38,6 +38,7 @@ class BaseAgent:
             agent_type: Type identifier for the agent
         """
         self.id = str(uuid.uuid4())
+        self.agent_id = self.id  # Add alias for compatibility
         self.name = name
         self.description = description
         self.config = config
